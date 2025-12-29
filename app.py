@@ -58,20 +58,18 @@ with col_tri:
     st.write("### 🔺 The Impossible Trinity Monitor")
     tri_index = pred_prob * o25_odds
     
-    
-    
     if tri_index > 1.05:
-        st.error(f"Index {tri_index:.2f}: 【Mathematical Illusion】\nThis combination rarely exists in real markets. Likely a scam or error.")
+        st.error(f"Index {tri_index:.2f}: 【Mathematical Illusion】\nThis combination rarely exists in real markets.")
     elif tri_index > 0.95:
-        st.warning(f"Index {tri_index:.2f}: 【Professional Edge Zone】\nA slight mathematical advantage exists. Requires strict discipline.")
+        st.warning(f"Index {tri_index:.2f}: 【Professional Edge Zone】\nA slight mathematical advantage exists.")
     else:
-        st.success(f"Index {tri_index:.2f}: 【The Harvest Zone】\nThis is the house's favorite zone. You win often, but you lose money overall.")
+        st.success(f"Index {tri_index:.2f}: 【The Harvest Zone】\nYou win often, but you lose money overall.")
 
 with col_val:
     st.write("### 💰 Expected Value (EV) Diagnosis")
     if ev > 0:
         st.metric("Expected Return", f"+{ev:.2%}", "Edge Found")
-        kelly = max(0, ev / (adjusted_ev_odds - 1))
+        kelly = max(0, (ev / (adjusted_ev_odds - 1)))
         st.write(f"Suggested Kelly Position: **{kelly:.2%}** of Bankroll")
     else:
         st.metric("Expected Return", f"{ev:.2%}", "No Edge - Stay Out", delta_color="inverse")
@@ -122,37 +120,42 @@ with c2:
     st.write("**PnL Distribution across Outcomes:**")
     st.bar_chart(df_res.set_index("Outcome")["Net Profit/Loss"])
     
+    # 修复报错位置：正确处理盲区警告
     holes = df_res[df_res['Net Profit/Loss'] < 0]
     if total_stake > 0:
         if holes.empty:
-            st.success("✨ Mathematical Coverage achieved (Check if profit margin is too thin).")
+            st.success("✨ Mathematical Coverage achieved.")
         else:
-            hole_names = ", ".join(holes['Outcome'].tolist())
-            st.warning(f"🚨 Blindspot Alert: If the result is {hole_names}, you lose money.")
+            # 将列表转换为字符串，并确保 f-string 正确闭合
+            hole_list_str = ", ".join(holes['Outcome'].tolist())
+            st.warning(f"🚨 Blindspot Alert: If the result is {hole_list_str}, you lose money.")
 
 # --- 5. Educational Module: Equity Curve ---
 st.divider()
 st.subheader("📉 The Truth: Over-Trading vs. Disciplined Patience")
 rounds = 50
-ops_curve = [10000]
-no_ops_curve = [10000]
+ops_curve = [10000.0]
+no_ops_curve = [10000.0]
 
 for _ in range(rounds):
-    # Simulated outcome based on EV
-    change = np.random.choice([adjusted_ev_odds - 1 if adjusted_ev_odds > 1 else -0.02, -1.0])
-    # Apply small leverage/risk per trade
-    risk_percent = 0.05 
-    outcome = np.random.choice([risk_percent * (adjusted_ev_odds - 1), -risk_percent], p=[pred_prob, 1-pred_prob])
+    # 根据用户胜率和赔率模拟结果
+    risk_per_trade = 0.05
+    win = np.random.random() < pred_prob
+    if win:
+        outcome = risk_per_trade * (adjusted_ev_odds - 1)
+    else:
+        outcome = -risk_per_trade
+    
     ops_curve.append(ops_curve[-1] * (1 + outcome))
-    no_ops_curve.append(10000)
+    no_ops_curve.append(10000.0)
 
 chart_df = pd.DataFrame({
     "Trials": np.arange(rounds + 1),
-    "Aggressive Trading (Neg EV)": ops_curve,
+    "Aggressive Trading": ops_curve,
     "Staying Out (Patience)": no_ops_curve
 })
 st.line_chart(chart_df.set_index("Trials"))
-st.caption("Note: In a Negative EV system, the green line (doing nothing) beats 90% of active participants.")
+st.caption("Note: The green line (doing nothing) beats most participants in negative EV systems.")
 
 # --- 6. Footer ---
 st.markdown("---")
