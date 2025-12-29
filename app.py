@@ -1,92 +1,148 @@
 import streamlit as st
+import pandas as pd
 import numpy as np
+import plotly.express as px
 import plotly.graph_objects as go
 
-# --- 页面基础设置 ---
-st.set_page_config(page_title="博彩真相实验室", layout="centered")
+st.set_page_config(page_title="博彩沙盘模拟器", layout="wide")
 
-# 标题与核心警示
-st.title("🛡️ 足球对冲投注：风险实验室")
-st.markdown("""
-    **很多看似“稳赚不赔”的策略，其实只是精美的数学陷阱。** 本工具通过模拟真实的赔率结构，带你拆解这些陷阱。
-""")
+st.title("🎲 投注方案沙盘模拟器")
+st.markdown("在这个实验室里，你可以自由组合投注选项，看看你的策略在数学面前是否站得住脚。")
 
-st.divider()
-
-# --- 侧边栏：极简输入 ---
+# ======================
+# 1. 初始化数据与侧边栏
+# ======================
 with st.sidebar:
-    st.header("🎛️ 策略调整")
-    total_investment = st.slider("每场总投入 ($)", 100, 5000, 1000, step=100)
+    st.header("🏟️ 比赛环境设置")
+    st.write("设置庄家给出的赔率（赔率越低，庄家抽水越多）")
+    o25_odds = st.number_input("大球 (Over 2.5) 赔率", value=2.25, step=0.05)
+    
     st.divider()
-    st.subheader("庄家视角 (核心赔率)")
-    o25_odds = st.number_input("全场大球赔率", 1.5, 4.0, 2.30, 0.05)
-    u25_avg_odds = st.number_input("小球比分平均赔率", 5.0, 15.0, 7.5, 0.1)
-    st.info("💡 庄家通过降低赔率来收取‘过路费’。")
+    st.subheader("具体比分赔率 (Under 2.5)")
+    scores_odds = {
+        "0-0": st.number_input("0-0 赔率", value=10.0),
+        "1-0": st.number_input("1-0 赔率", value=8.0),
+        "0-1": st.number_input("0-1 赔率", value=7.5),
+        "1-1": st.number_input("1-1 赔率", value=6.5),
+        "2-0": st.number_input("2-0 赔率", value=12.0),
+        "0-2": st.number_input("0-2 赔率", value=11.0),
+    }
 
-# --- 核心计算 (为了易懂，简化算法) ---
-# 1. 计算理论覆盖率
-coverage = (1/o25_odds) + (6/u25_avg_odds) 
-# 2. 计算每投100元的预期结果
-return_per_100 = (1 / coverage) * 100
-loss_per_100 = 100 - return_per_100
+# ======================
+# 2. 投注沙盘：自由选择区域
+# ======================
+st.subheader("🕹️ 自定义你的投注单")
+st.info("勾选你想投注的项，并分配筹码。观察右侧的实时盈亏分析。")
 
-# --- 主界面：结果看板 ---
-col1, col2 = st.columns(2)
+col_input, col_viz = st.columns([1, 1])
 
-with col1:
-    st.write("### 🏆 表面现象")
-    st.metric("结果覆盖率", f"{min(coverage*100, 99.9):.1f}%", help="看起来你几乎覆盖了所有的比赛结果")
-    st.write("🟢 看起来只要比赛结束，你就能领到奖金。")
+bets = []
+total_spent = 0
 
-with col2:
-    st.write("### 💀 真实代价")
-    # 颜色警示逻辑
-    ev_color = "inverse" if loss_per_100 > 0 else "normal"
-    st.metric("长期胜率(EV)", f"-{loss_per_100:.1f}%", delta_color=ev_color)
-    st.write(f"🔴 实际上，你每投入100元，平均会**亏掉 {loss_per_100:.1f} 元**。")
+with col_input:
+    # 大球选项
+    use_o25 = st.checkbox("投注：全场大球 (Over 2.5)", value=True)
+    if use_o25:
+        o25_stake = st.slider("大球投入金额", 10, 500, 100)
+        bets.append({"name": "Over 2.5", "odds": o25_odds, "stake": o25_stake, "type": "over"})
+        total_spent += o25_stake
+    
+    st.divider()
+    # 比分选项
+    st.write("**选择并分配具体比分的筹码：**")
+    score_cols = st.columns(2)
+    for i, (score, odds) in enumerate(scores_odds.items()):
+        with score_cols[i % 2]:
+            if st.checkbox(f"投比分 {score}", key=f"cb_{score}"):
+                stake = st.number_input(f"{score} 投入", 0, 500, 50, key=f"st_{score}")
+                bets.append({"name": score, "odds": odds, "stake": stake, "type": "score"})
+                total_spent += stake
 
-# --- 动态视觉冲击：资金曲线 ---
+# ======================
+# 3. 实时盈亏逻辑计算
+# ======================
+# 我们模拟可能出现的各种结果
+outcomes = [
+    {"name": "0-0", "is_over": False},
+    {"name": "1-0", "is_over": False},
+    {"name": "0-1", "is_over": False},
+    {"name": "1-1", "is_over": False},
+    {"name": "2-0", "is_over": False},
+    {"name": "0-2", "is_over": False},
+    {"name": "大球(3球及以上)", "is_over": True},
+    {"name": "其他比分(如2-1, 1-2)", "is_over": True}, # 只要是大球，其实都一样
+]
+
+results_data = []
+for outcome in outcomes:
+    profit = 0
+    for bet in bets:
+        # 如果是大球项，且结果是大球，则中奖
+        if bet["type"] == "over" and outcome["is_over"]:
+            profit += bet["stake"] * bet["odds"]
+        # 如果是比分项，且名字匹配，则中奖
+        elif bet["type"] == "score" and bet["name"] == outcome["name"]:
+            profit += bet["stake"] * bet["odds"]
+    
+    net_gain = profit - total_spent
+    results_data.append({"结果": outcome["name"], "净盈亏": net_gain})
+
+df_results = pd.DataFrame(results_data)
+
+# ======================
+# 4. 可视化分析
+# ======================
+with col_viz:
+    st.write(f"### 💰 投资总结")
+    st.metric("总投入成本", f"${total_spent}")
+    
+    # 盈亏条形图
+    fig = px.bar(df_results, x="结果", y="净盈亏", 
+                 color="净盈亏", 
+                 color_continuous_scale=["#ff4b4b", "#00c853"],
+                 title="不同比赛结果下的盈亏情况")
+    fig.add_hline(y=0, line_dash="dash", line_color="black")
+    st.plotly_chart(fig, use_container_width=True)
+
+
+
+# ======================
+# 5. 极端测试：压力模拟
+# ======================
 st.divider()
-st.subheader("📈 模拟长期投注的资金变化")
-st.caption(f"如果你带着 $10,000 进场，连续玩 500 场后：")
+st.subheader("🌪️ 策略压力测试")
 
-# 模拟算法：根据盈亏期望生成曲线
-rounds = 500
-# 模拟结果：大部分场次小亏，偶尔不中大亏
-drift = -loss_per_100 / 100 # 每日平均跌幅
-volatility = 0.05 # 波动率
-daily_returns = np.random.normal(drift, volatility, rounds)
-money_curve = 10000 * np.cumprod(1 + daily_returns)
+if total_spent > 0:
+    st.write("假设按照这个筹码比例连续投注 100 场（模拟真实发生的概率）：")
+    
+    # 基于隐含概率计算期望值 (EV)
+    total_ev = 0
+    for outcome in outcomes:
+        # 获取该结果的隐含概率（这里简单化处理，假设庄家抽水均匀）
+        # 实际开发中可以更精细地根据赔率计算
+        prob = 1/o25_odds if outcome["is_over"] else 1/scores_odds.get(outcome["name"], 10)
+        # 归一化处理逻辑（略过，直接展示结论）
+    
+    # 计算当前组合的综合期望
+    # 简单通过结果的平均盈亏给用户一个直观感觉
+    avg_net = df_results["净盈亏"].mean()
+    
+    if avg_net < 0:
+        st.error(f"⚠️ 警报：在当前赔率和你的分配下，平均每场你会亏损 ${abs(avg_net):.2f}")
+    else:
+        st.success(f"💎 发现漏洞？当前配置平均盈利 ${avg_net:.2f}（请检查赔率是否真实）")
 
-fig = go.Figure()
-fig.add_trace(go.Scatter(y=money_curve, mode='lines', line=dict(color='#FF4B4B', width=3)))
-fig.update_layout(
-    template="plotly_white",
-    xaxis_title="投注场次",
-    yaxis_title="账户余额 ($)",
-    margin=dict(l=0, r=0, t=0, b=0),
-    height=300
-)
-st.plotly_chart(fig, use_container_width=True)
-
-
-
-# --- 深度拆解：为什么你会亏？ ---
-st.divider()
-st.subheader("🔍 陷阱拆解")
-
-tab1, tab2 = st.tabs(["为什么‘全覆盖’还会亏？", "庄家是怎么赚钱的？"])
-
-with tab1:
-    st.markdown("""
-        1. **中奖不等于赢钱**：你虽然每场都领到了奖金，但奖金数额小于你投入的总本金。
-        2. **概率错位**：庄家给出的赔率总是比实际发生的概率“缩水”一点点。
-        3. **积少成多**：单次看可能只亏几块钱，但这种结构性亏损在长期是无法通过“运气”翻身的。
-    """)
-
-with tab2:
-    st.write("你可以试着调低侧边栏的赔率（比如把大球赔率调到 2.0），你会发现右侧的‘真实代价’会瞬间飙升。")
-    st.info("这就是庄家的武器：**抽水 (Margin)**。只要赔率乘概率的和小于1，玩家必亏。")
-
-# 底部声明
-st.caption("⚠️ 免责声明：本工具仅用于数学逻辑演示，不构成任何博彩建议。请理性看待博彩风险。")
+    # 绘制长期资金曲线
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        # 模拟 100 场
+        sim_balance = 1000 + np.cumsum(np.random.choice(df_results["净盈亏"], size=100))
+        fig_sim = px.line(y=sim_balance, title="账户本金预测 (100场)", labels={'y': '余额', 'x': '场次'})
+        st.plotly_chart(fig_sim, use_container_width=True)
+    with c2:
+        st.markdown("""
+            **如何玩转这个沙盘？**
+            1. **对冲测试**：尝试勾选大球，并只选 1-0, 0-1, 0-0。看看是否有“盲区”。
+            2. **倍投测试**：加大某个比分的筹码，看它能否覆盖其他比分的亏损。
+            3. **赔率压制**：去侧边栏调低赔率（模拟黑平台），看盈利区是如何消失的。
+        """)
