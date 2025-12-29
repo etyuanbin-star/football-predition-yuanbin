@@ -1,147 +1,134 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Hedge Betting Trap Demo", layout="centered")
-
-st.title("⚠️ Football Hedge Betting Trap Demo")
-st.caption("For people who understand probability / finance / game theory")
-
-st.divider()
-
 # ======================
-# 通用函数
+# 核心逻辑层 (Logic)
 # ======================
 
-def implied_prob(odds):
+def calculate_implied_prob(odds):
+    """计算隐含概率，处理赔率为0的极端情况"""
     return 1 / odds if odds > 0 else 0
 
-# ======================
-# 比赛 A：核心对冲场
-# ======================
-
-st.subheader("Match A — Score Hedge + Over 2.5")
-
-over25_odds = st.number_input("Over 2.5 Odds", 2.20, 2.50, 2.30, 0.01)
-stake_over = st.number_input("Over 2.5 Stake", value=100)
-
-st.markdown("#### Under 2.5 Score Odds (6 Scores)")
-
-score_inputs = {
-    "1-0": st.number_input("1-0", value=7.30),
-    "0-0": st.number_input("0-0", value=7.20),
-    "0-1": st.number_input("0-1", value=5.80),
-    "2-0": st.number_input("2-0", value=14.00),
-    "1-1": st.number_input("1-1", value=5.90),
-    "0-2": st.number_input("0-2", value=10.00),
-}
-
-score_filter_odds = st.number_input("Score Odds Filter (>=)", value=6.0)
-stake_scores_total = st.number_input("Score Combo Total Stake", value=100)
-
-# 筛选比分
-selected_scores = {k: v for k, v in score_inputs.items() if v >= score_filter_odds}
-num_scores = len(selected_scores)
+def calculate_ev(prob, odds, stake):
+    """计算期望值 EV = (Win_Prob * Profit) - (Loss_Prob * Stake)"""
+    if odds <= 0 or stake <= 0:
+        return 0.0
+    profit = (odds * stake) - stake
+    return (prob * profit) - ((1 - prob) * stake)
 
 # ======================
-# 系统一计算
+# 配置与样式
 # ======================
+st.set_page_config(page_title="Hedge Betting Trap Demo", layout="wide")
 
-over_prob = implied_prob(over25_odds)
-score_probs = {k: implied_prob(v) for k, v in selected_scores.items()}
-score_prob_sum = sum(score_probs.values())
-
-coverage_sys1 = over_prob + score_prob_sum
-
-stake_per_score = stake_scores_total / num_scores if num_scores > 0 else 0
-
-ev_over = over_prob * (over25_odds * stake_over - stake_over) - (1 - over_prob) * stake_over
-
-ev_scores = 0
-for odds in selected_scores.values():
-    p = implied_prob(odds)
-    win_profit = odds * stake_per_score - stake_per_score
-    ev_scores += p * win_profit - (1 - p) * stake_per_score
-
-ev_sys1 = ev_over + ev_scores
+st.title("⚠️ Football Hedge Betting Trap Demo")
+st.caption("Insight: Pricing structure usually favors the bookmaker regardless of hedging.")
 
 # ======================
-# 比赛 B：高胜率锚点
+# 输入区域 (UI - Sidebar or Columns)
 # ======================
-
+with st.sidebar:
+    st.header("⚙️ Global Parameters")
+    stake_over = st.number_input("Over 2.5 Stake", value=100, step=10)
+    stake_scores_total = st.number_input("Score Combo Total Stake", value=100, step=10)
+    stake_anchor = st.number_input("Anchor Combo Stake", value=100, step=10)
+    
 st.divider()
-st.subheader("Match B — High Win Anchor")
 
-home_win_odds = st.number_input("Home Win Odds (<1.40)", value=1.25)
-stake_anchor = st.number_input("Anchor Combo Stake", value=100)
+col1, col2 = st.columns(2)
 
-st.markdown("#### Total Goals Odds (Match A)")
-tg_0 = st.number_input("0 Goals Odds", value=7.20)
-tg_1 = st.number_input("1 Goal Odds", value=3.60)
-tg_2 = st.number_input("2 Goals Odds", value=3.20)
+with col1:
+    st.subheader("Match A: Score Hedge + Over 2.5")
+    over25_odds = st.number_input("Over 2.5 Odds", 2.0, 5.0, 2.30, 0.05)
+    
+    st.markdown("**Under 2.5 Score Odds (Select to Hedge)**")
+    # 使用表格布局输入，更美观
+    input_cols = st.columns(3)
+    score_data = [("1-0", 7.30), ("0-0", 7.20), ("0-1", 5.80), ("2-0", 14.0), ("1-1", 5.90), ("0-2", 10.0)]
+    
+    selected_scores = {}
+    for i, (score, default_val) in enumerate(score_data):
+        with input_cols[i % 3]:
+            val = st.number_input(score, value=default_val, key=f"score_{score}")
+            selected_scores[score] = val
 
-# ======================
-# 系统二计算
-# ======================
+    score_filter_odds = st.slider("Min Odds to Include in Hedge", 1.0, 10.0, 6.0)
 
-# 排除0球
-tg_selected = {
-    "1 Goal": tg_1,
-    "2 Goals": tg_2
-}
-
-tg_probs = {k: implied_prob(v) for k, v in tg_selected.items()}
-home_win_prob = implied_prob(home_win_odds)
-
-combo_prob = sum(tg_probs.values()) * home_win_prob
-
-combo_odds_avg = sum(tg_selected.values()) / len(tg_selected)
-combo_odds = combo_odds_avg * home_win_odds
-
-ev_combo = combo_prob * (combo_odds * stake_anchor - stake_anchor) - (1 - combo_prob) * stake_anchor
-
-# Over2.5 仍然下注
-ev_sys2 = ev_over + ev_combo
+with col2:
+    st.subheader("Match B: High Win Anchor")
+    home_win_odds = st.number_input("Match B Home Win Odds (Anchor)", 1.05, 2.0, 1.25, 0.01)
+    
+    st.markdown("**Match A - Goal Distribution Odds**")
+    tg_0 = st.number_input("0 Goals Odds", value=7.20)
+    tg_1 = st.number_input("1 Goal Odds", value=3.60)
+    tg_2 = st.number_input("2 Goals Odds", value=3.20)
 
 # ======================
-# 输出结果
+# 计算层 (Calculation)
 # ======================
 
+# 系统 1 计算
+valid_scores = {k: v for k, v in selected_scores.items() if v >= score_filter_odds}
+over_prob = calculate_implied_prob(over25_odds)
+scores_prob_sum = sum(calculate_implied_prob(v) for v in valid_scores.values())
+
+ev_over = calculate_ev(over_prob, over25_odds, stake_over)
+ev_scores = 0
+if valid_scores:
+    s_per_score = stake_scores_total / len(valid_scores)
+    for o in valid_scores.values():
+        p = calculate_implied_prob(o)
+        ev_scores += calculate_ev(p, o, s_per_score)
+
+sys1_ev_total = ev_over + ev_scores
+sys1_coverage = over_prob + scores_prob_sum
+
+# 系统 2 计算 (Match A 1-2 Goals + Match B Win)
+tg_selected = {"1G": tg_1, "2G": tg_2}
+tg_prob_sum = sum(calculate_implied_prob(v) for v in tg_selected.values())
+home_win_prob = calculate_implied_prob(home_win_odds)
+
+# 串关赔率计算 (乘法原则)
+combo_odds = (sum(tg_selected.values()) / 2) * home_win_odds 
+combo_prob = tg_prob_sum * home_win_prob
+ev_combo = calculate_ev(combo_prob, combo_odds, stake_anchor)
+
+sys2_ev_total = ev_over + ev_combo
+
+# ======================
+# 结果展示层 (Results)
+# ======================
 st.divider()
 st.subheader("📊 Strategy Evaluation")
 
-df = pd.DataFrame({
-    "System": ["System 1", "System 2"],
-    "Coverage / Hit Illusion": [coverage_sys1, combo_prob],
-    "Total Stake": [
-        stake_over + stake_scores_total,
-        stake_over + stake_anchor
-    ],
-    "Expected Value (EV)": [ev_sys1, ev_sys2]
+res_df = pd.DataFrame({
+    "Strategy": ["System 1 (Wide Hedge)", "System 2 (Parlay Anchor)"],
+    "Hit Illusion (Prob)": [f"{sys1_coverage:.2%}", f"{combo_prob:.2%}"],
+    "Total Stake ($)": [stake_over + stake_scores_total, stake_over + stake_anchor],
+    "Total EV ($)": [round(sys1_ev_total, 2), round(sys2_ev_total, 2)]
 })
 
-st.dataframe(df, use_container_width=True)
+# 突出显示 EV 列
+def color_ev(val):
+    color = 'red' if val < 0 else 'green'
+    return f'color: {color}; font-weight: bold'
+
+st.table(res_df.style.applymap(color_ev, subset=['Total EV ($)']))
+
+# 增加可视化对比
+st.bar_chart(res_df.set_index("Strategy")["Total EV ($)"])
 
 # ======================
-# 陷阱揭示
+# 陷阱揭示与总结
 # ======================
+st.subheader("🚨 Why the House Always Wins")
 
-st.divider()
-st.subheader("🚨 Trap Exposed")
+with st.expander("Click to see the mathematical trap"):
+    st.write("""
+    1. **Margin Stacking**: Each time you add a selection to a 'hedge', you are paying the bookmaker's margin again.
+    2. **Probability Illusion**: A $90\%$ coverage sounds safe, but if the combined EV is $-5\%$, you are simply losing money $5\%$ faster.
+    3. **The Anchor Trap**: Match B (the 'banker') adds risk without adding relative value if its odds already reflect its true probability.
+    """)
 
-st.markdown("""
-**Key Insight**
-
-- High coverage ≠ positive EV  
-- Hedging does NOT remove bookmaker margin  
-- You are buying multiple negatively-priced probability products  
-
-**This is not a football problem.  
-This is a pricing structure problem.**
-""")
-
-if ev_sys1 < 0 and ev_sys2 < 0:
-    st.error("❌ Both systems are structurally negative EV")
-else:
-    st.warning("⚠️ One system shows abnormal result — recheck assumptions")
-
-st.caption("Demo purpose: reveal structural traps, not recommend betting.")
+if sys1_ev_total < 0 and sys2_ev_total < 0:
+    st.error(f"Financial Verdict: Both systems lead to an expected loss of approximately ${abs(min(sys1_ev_total, sys2_ev_total)):.2f} per cycle.")
