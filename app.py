@@ -3,114 +3,88 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
-# --- 页面样式优化 ---
-st.set_page_config(page_title="足球策略实验场", layout="wide")
+st.set_page_config(page_title="足球投注模拟沙盘", layout="wide")
 
-st.title("🕹️ 足球投注策略：沙盘实验室")
-st.markdown("这里没有固定的方案。你可以随意**排列组合**，看看数学逻辑如何拆解你的对冲策略。")
+st.title("🎲 足球投注策略：自由模拟沙盘")
+st.markdown("在这个实验室里，你可以**自由组合**投注项。拖动滑块或勾选选项，右侧图表会实时告诉你这是“赚钱方案”还是“爆仓陷阱”。")
 
-# --- 1. 环境设定（侧边栏） ---
+# --- 1. 庄家赔率设置 (侧边栏) ---
 with st.sidebar:
-    st.header("📊 庄家赔率环境")
-    st.caption("调整这里的赔率，模拟不同博彩公司的抽水情况")
+    st.header("⚖️ 市场环境(赔率)")
     o25_odds = st.number_input("全场大球 (Over 2.5) 赔率", value=2.25, step=0.05)
-    
     st.divider()
-    st.subheader("比分赔率设定")
+    st.subheader("比分赔率 (Under 2.5)")
     score_list = ["0-0", "1-0", "0-1", "1-1", "2-0", "0-2"]
     default_odds = [10.0, 8.0, 7.5, 6.5, 12.0, 11.0]
-    scores_config = {}
-    for score, d_odds in zip(score_list, default_odds):
-        scores_config[score] = st.number_input(f"{score} 赔率", value=d_odds, step=0.1)
+    scores_config = {s: st.number_input(f"{s} 赔率", value=d) for s, d in zip(score_list, default_odds)}
 
-# --- 2. 核心操作区 ---
-col_input, col_viz = st.columns([2, 3], gap="large")
-
+# --- 2. 自由投注操作区 ---
+col_input, col_viz = st.columns([1, 1], gap="large")
 active_bets = []
 
 with col_input:
-    st.subheader("📝 你的投注单")
-    st.write("勾选并输入你想在每个选项上投入的金额：")
+    st.subheader("🕹️ 自由配置你的投注单")
     
-    # 大球投注卡片
+    # 大球投注
     with st.container(border=True):
-        c1, c2 = st.columns([1, 1])
-        is_o25 = c1.toggle("投注：全场大球", value=True)
-        o25_stake = c2.number_input("投入 ($)", value=100, step=10, key="o25_s") if is_o25 else 0
-        if is_o25: active_bets.append({"name": "大球结果", "odds": o25_odds, "stake": o25_stake, "is_over": True})
+        c1, c2 = st.columns([1, 2])
+        if c1.toggle("投注：全场大球", value=True):
+            amt = c2.slider("大球投入金额 ($)", 0, 1000, 100)
+            if amt > 0:
+                active_bets.append({"name": "大球结果", "odds": o25_odds, "stake": amt, "is_over": True})
 
     # 比分投注矩阵
-    st.write("投注：具体小球比分")
-    score_grid = st.columns(2)
-    for i, score in enumerate(score_list):
-        with score_grid[i % 2]:
+    st.write("**具体比分对冲方案：**")
+    grid = st.columns(2)
+    for i, s in enumerate(score_list):
+        with grid[i % 2]:
             with st.container(border=True):
-                is_bet = st.checkbox(f"投 {score}", key=f"bet_{score}")
-                s_stake = st.number_input(f"金额", value=50, step=10, key=f"s_{score}") if is_bet else 0
-                if is_bet: 
-                    active_bets.append({"name": score, "odds": scores_config[score], "stake": s_stake, "is_over": False})
+                if st.checkbox(f"投注 {s}", key=f"cb_{s}"):
+                    amt = st.number_input(f"金额", value=50, step=10, key=f"amt_{s}")
+                    active_bets.append({"name": s, "odds": scores_config[s], "stake": amt, "is_over": False})
 
-    total_cost = sum(b['stake'] for b in active_bets)
-    st.metric("总计投入金额", f"${total_cost}")
+    total_stake = sum(b['stake'] for b in active_bets)
+    st.metric("总计投入本金", f"${total_stake}")
 
-# --- 3. 实时分析计算 ---
-# 模拟可能的赛果
-possible_outcomes = score_list + ["大球(3球及以上)"]
-analysis_data = []
+# --- 3. 实时盈亏逻辑 ---
+outcomes = score_list + ["大球(3球+)"]
+results = []
 
-for outcome in possible_outcomes:
+for out in outcomes:
     income = 0
-    is_outcome_over = (outcome == "大球(3球及以上)")
-    
+    is_out_over = (out == "大球(3球+)")
     for bet in active_bets:
-        if bet['is_over'] and is_outcome_over:
+        if (bet['is_over'] and is_out_over) or (bet['name'] == out):
             income += bet['stake'] * bet['odds']
-        elif bet['name'] == outcome:
-            income += bet['stake'] * bet['odds']
-            
-    net_profit = income - total_cost
-    analysis_data.append({"赛果": outcome, "净盈亏": net_profit})
+    results.append({"赛果": out, "净盈亏": income - total_stake})
 
-df_analysis = pd.DataFrame(analysis_data)
+df = pd.DataFrame(results)
 
-# --- 4. 视觉反馈中心 ---
+# --- 4. 视觉反馈 ---
 with col_viz:
-    st.subheader("📊 策略实时盈亏预测")
-    
-    # 盈利图表
-    fig = px.bar(
-        df_analysis, 
-        x="赛果", 
-        y="净盈亏", 
-        color="净盈亏",
-        color_continuous_scale=["#FF4B4B", "#00C853"], # 亏损红，盈利绿
-        text_auto='.2f'
-    )
-    fig.add_hline(y=0, line_dash="dash", line_color="black", line_width=2)
-    fig.update_layout(height=450, margin=dict(t=20))
-    st.plotly_chart(fig, use_container_width=True)
-    
-
-    # 漏洞提醒系统
-    holes = df_analysis[df_analysis['净盈亏'] <= -total_cost]
-    if not holes.empty and total_cost > 0:
-        st.error(f"🚨 **存在盲区：** 如果比赛结果是 **{', '.join(holes['赛果'].tolist())}**，你将损失全部投入。")
-    elif total_cost > 0:
-        avg_ev = df_analysis['净盈亏'].mean()
-        if avg_ev < 0:
-            st.warning(f"📉 **庄家陷阱：** 虽然你覆盖了所有结果，但平均每场仍会亏损 **${abs(avg_ev):.2f}**。")
+    st.subheader("📊 实时盈亏反馈")
+    if total_stake > 0:
+        # 使用 Plotly 制作精美条形图
+        fig = px.bar(df, x="赛果", y="净盈亏", color="净盈亏",
+                     color_continuous_scale=["#FF4B4B", "#00C853"],
+                     text_auto='.2f')
+        fig.add_hline(y=0, line_dash="dash", line_color="black")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 风险报告
+        loss_cases = df[df['净盈亏'] < 0]
+        if loss_cases.empty:
+            st.success("✅ 这是一个完美对冲！无论结果如何你都盈利。")
         else:
-            st.success("💎 **理论盈利：** 当前配置在数学上有正收益（通常在真实赔率下很难实现）。")
+            st.warning(f"⚠️ 警告：当前有 {len(loss_cases)} 种结果会导致亏损。")
+            st.table(df.set_index("赛果"))
+    else:
+        st.info("请在左侧开始你的投注组合。")
 
-# --- 5. 压力测试（可玩性增强） ---
+# --- 5. 压力测试 ---
 st.divider()
-if total_cost > 0:
-    st.subheader("🌊 连续投注模拟")
-    st.write("假设按照你现在的配置，连续玩 100 场（随机生成真实赛果）：")
-    
-    # 基于结果分布的简单模拟
-    sim_results = np.random.choice(df_analysis['净盈亏'], size=100)
-    bankroll = 10000 + np.cumsum(sim_results)
-    
-    st.line_chart(bankroll)
-    st.caption("注：起始资金为 $10,000。此图展示了‘高覆盖率’策略下，本金在抽水环境中的消耗过程。")
+if total_stake > 0:
+    st.subheader("🌊 连续投注 100 场模拟")
+    sim = 10000 + np.cumsum(np.random.choice(df['净盈亏'], size=100))
+    st.line_chart(bankroll := sim)
+    st.caption("注：模拟展示了在包含庄家抽水的负 EV 情况下，资金的衰减过程。")
