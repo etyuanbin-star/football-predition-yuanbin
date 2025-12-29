@@ -64,6 +64,8 @@ with col_tri:
         st.warning(f"Index {tri_index:.2f}: 【Professional Edge Zone】\nA slight mathematical advantage exists.")
     else:
         st.success(f"Index {tri_index:.2f}: 【The Harvest Zone】\nYou win often, but you lose money overall.")
+    
+    
 
 with col_val:
     st.write("### 💰 Expected Value (EV) Diagnosis")
@@ -110,53 +112,4 @@ with c2:
     res_data = []
     for out in outcomes:
         income = 0
-        is_o = (out == "Over 2.5 (3+ Goals)")
-        for b in active_bets:
-            if (b['is_over'] and is_o) or (b['name'] == out):
-                income += b['stake'] * b['odds']
-        res_data.append({"Outcome": out, "Net Profit/Loss": income - total_stake})
-    
-    df_res = pd.DataFrame(res_data)
-    st.write("**PnL Distribution across Outcomes:**")
-    st.bar_chart(df_res.set_index("Outcome")["Net Profit/Loss"])
-    
-    # 修复报错位置：正确处理盲区警告
-    holes = df_res[df_res['Net Profit/Loss'] < 0]
-    if total_stake > 0:
-        if holes.empty:
-            st.success("✨ Mathematical Coverage achieved.")
-        else:
-            # 将列表转换为字符串，并确保 f-string 正确闭合
-            hole_list_str = ", ".join(holes['Outcome'].tolist())
-            st.warning(f"🚨 Blindspot Alert: If the result is {hole_list_str}, you lose money.")
-
-# --- 5. Educational Module: Equity Curve ---
-st.divider()
-st.subheader("📉 The Truth: Over-Trading vs. Disciplined Patience")
-rounds = 50
-ops_curve = [10000.0]
-no_ops_curve = [10000.0]
-
-for _ in range(rounds):
-    # 根据用户胜率和赔率模拟结果
-    risk_per_trade = 0.05
-    win = np.random.random() < pred_prob
-    if win:
-        outcome = risk_per_trade * (adjusted_ev_odds - 1)
-    else:
-        outcome = -risk_per_trade
-    
-    ops_curve.append(ops_curve[-1] * (1 + outcome))
-    no_ops_curve.append(10000.0)
-
-chart_df = pd.DataFrame({
-    "Trials": np.arange(rounds + 1),
-    "Aggressive Trading": ops_curve,
-    "Staying Out (Patience)": no_ops_curve
-})
-st.line_chart(chart_df.set_index("Trials"))
-st.caption("Note: The green line (doing nothing) beats most participants in negative EV systems.")
-
-# --- 6. Footer ---
-st.markdown("---")
-st.markdown("<h3 style='text-align: center; color: gray;'>The more you 'lose' in this lab, the more you save in the real world.</h3>", unsafe_allow_html=True)
+        is_o = (out == "Over 2.5
