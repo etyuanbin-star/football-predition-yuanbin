@@ -1,223 +1,147 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 
-# ===============================
-# Page Config
-# ===============================
-st.set_page_config(
-    page_title="Football Odds Hedge Terminal",
-    layout="wide"
-)
+st.set_page_config(page_title="Hedge Betting Trap Demo", layout="centered")
 
-st.title("⚽ Football Odds Hedge – Negative EV Trading Terminal")
-st.caption(
-    "A structural demonstration of why rational hedge constructions fail "
-    "under bookmaker-implied probability and margin."
-)
+st.title("⚠️ Football Hedge Betting Trap Demo")
+st.caption("For people who understand probability / finance / game theory")
 
 st.divider()
 
-# ===============================
-# Panel 1: Market Input
-# ===============================
-st.subheader("🟦 Market Input")
+# ======================
+# 通用函数
+# ======================
 
-col1, col2 = st.columns(2)
-with col1:
-    match_name = st.text_input(
-        "Match",
-        "Angola vs Egypt (AFCON Group B, 2025-12-30)"
-    )
-with col2:
-    over25_odds = st.number_input(
-        "Over 2.5 Odds",
-        min_value=1.01,
-        value=2.30,
-        step=0.01
-    )
+def implied_prob(odds):
+    return 1 / odds if odds > 0 else 0
 
-st.markdown("### Under 2.5 – Exact Score Odds")
+# ======================
+# 比赛 A：核心对冲场
+# ======================
 
-scores = {
-    "0-0": st.number_input("0 - 0", value=7.20, step=0.1),
-    "1-0": st.number_input("1 - 0", value=7.30, step=0.1),
-    "0-1": st.number_input("0 - 1", value=5.80, step=0.1),
-    "2-0": st.number_input("2 - 0", value=14.00, step=0.1),
-    "1-1": st.number_input("1 - 1", value=5.90, step=0.1),
-    "0-2": st.number_input("0 - 2", value=10.00, step=0.1),
+st.subheader("Match A — Score Hedge + Over 2.5")
+
+over25_odds = st.number_input("Over 2.5 Odds", 2.20, 2.50, 2.30, 0.01)
+stake_over = st.number_input("Over 2.5 Stake", value=100)
+
+st.markdown("#### Under 2.5 Score Odds (6 Scores)")
+
+score_inputs = {
+    "1-0": st.number_input("1-0", value=7.30),
+    "0-0": st.number_input("0-0", value=7.20),
+    "0-1": st.number_input("0-1", value=5.80),
+    "2-0": st.number_input("2-0", value=14.00),
+    "1-1": st.number_input("1-1", value=5.90),
+    "0-2": st.number_input("0-2", value=10.00),
 }
 
+score_filter_odds = st.number_input("Score Odds Filter (>=)", value=6.0)
+stake_scores_total = st.number_input("Score Combo Total Stake", value=100)
+
+# 筛选比分
+selected_scores = {k: v for k, v in score_inputs.items() if v >= score_filter_odds}
+num_scores = len(selected_scores)
+
+# ======================
+# 系统一计算
+# ======================
+
+over_prob = implied_prob(over25_odds)
+score_probs = {k: implied_prob(v) for k, v in selected_scores.items()}
+score_prob_sum = sum(score_probs.values())
+
+coverage_sys1 = over_prob + score_prob_sum
+
+stake_per_score = stake_scores_total / num_scores if num_scores > 0 else 0
+
+ev_over = over_prob * (over25_odds * stake_over - stake_over) - (1 - over_prob) * stake_over
+
+ev_scores = 0
+for odds in selected_scores.values():
+    p = implied_prob(odds)
+    win_profit = odds * stake_per_score - stake_per_score
+    ev_scores += p * win_profit - (1 - p) * stake_per_score
+
+ev_sys1 = ev_over + ev_scores
+
+# ======================
+# 比赛 B：高胜率锚点
+# ======================
+
 st.divider()
+st.subheader("Match B — High Win Anchor")
 
-# ===============================
-# Panel 2: Position Construction
-# ===============================
-st.subheader("🟦 Position Construction")
+home_win_odds = st.number_input("Home Win Odds (<1.40)", value=1.25)
+stake_anchor = st.number_input("Anchor Combo Stake", value=100)
 
-st.markdown(
-    "Select **any 3 exact-score legs** (like selecting option legs in a spread structure). "
-    "Scores with odds < 6 are typically filtered out in practice."
-)
+st.markdown("#### Total Goals Odds (Match A)")
+tg_0 = st.number_input("0 Goals Odds", value=7.20)
+tg_1 = st.number_input("1 Goal Odds", value=3.60)
+tg_2 = st.number_input("2 Goals Odds", value=3.20)
 
-selected_scores = []
-for score, odds in scores.items():
-    if st.checkbox(f"{score} @ {odds}", value=odds >= 6):
-        selected_scores.append((score, odds))
+# ======================
+# 系统二计算
+# ======================
 
-if len(selected_scores) != 3:
-    st.warning("⚠️ Exactly **3 scorelines** must be selected.")
-    st.stop()
+# 排除0球
+tg_selected = {
+    "1 Goal": tg_1,
+    "2 Goals": tg_2
+}
 
-st.success("✔ 3-leg Under-score portfolio constructed")
+tg_probs = {k: implied_prob(v) for k, v in tg_selected.items()}
+home_win_prob = implied_prob(home_win_odds)
+
+combo_prob = sum(tg_probs.values()) * home_win_prob
+
+combo_odds_avg = sum(tg_selected.values()) / len(tg_selected)
+combo_odds = combo_odds_avg * home_win_odds
+
+ev_combo = combo_prob * (combo_odds * stake_anchor - stake_anchor) - (1 - combo_prob) * stake_anchor
+
+# Over2.5 仍然下注
+ev_sys2 = ev_over + ev_combo
+
+# ======================
+# 输出结果
+# ======================
 
 st.divider()
+st.subheader("📊 Strategy Evaluation")
 
-# ===============================
-# Panel 3: Implied Probability Matrix
-# ===============================
-st.subheader("🟦 Implied Probability Matrix")
-
-data = []
-
-# Over 2.5
-data.append({
-    "Leg": "Over 2.5",
-    "Odds": over25_odds,
-    "Implied Probability": 1 / over25_odds
+df = pd.DataFrame({
+    "System": ["System 1", "System 2"],
+    "Coverage / Hit Illusion": [coverage_sys1, combo_prob],
+    "Total Stake": [
+        stake_over + stake_scores_total,
+        stake_over + stake_anchor
+    ],
+    "Expected Value (EV)": [ev_sys1, ev_sys2]
 })
-
-# Selected Under scores
-for score, odds in selected_scores:
-    data.append({
-        "Leg": f"Under {score}",
-        "Odds": odds,
-        "Implied Probability": 1 / odds
-    })
-
-df = pd.DataFrame(data)
-df["Implied Probability (%)"] = df["Implied Probability"] * 100
 
 st.dataframe(df, use_container_width=True)
 
-total_implied_prob = df["Implied Probability"].sum()
-
-st.markdown(
-    f"**Total Implied Probability (Selected Outcome Space): "
-    f"{total_implied_prob*100:.2f}%**"
-)
-
-st.caption(
-    "Probabilities are directly derived from bookmaker odds "
-    "(before any margin normalization)."
-)
+# ======================
+# 陷阱揭示
+# ======================
 
 st.divider()
+st.subheader("🚨 Trap Exposed")
 
-# ===============================
-# Panel 4: Coverage vs Expectation
-# ===============================
-st.subheader("🟦 Coverage vs Expectation")
-
-coverage_estimate = total_implied_prob
-house_edge_estimate = max(0.0, coverage_estimate - 1.0)
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric(
-        "Outcome Coverage (Implied)",
-        f"{coverage_estimate*100:.1f}%"
-    )
-with col2:
-    st.metric(
-        "Estimated House Edge",
-        f"{house_edge_estimate*100:.1f}%"
-    )
-with col3:
-    st.metric(
-        "Structural Bias",
-        "Negative EV"
-    )
-
-st.markdown(
-    """
+st.markdown("""
 **Key Insight**
 
-- High outcome coverage does **not** imply profitability  
-- Diversifying outcomes reduces variance, **not expectation**
-- Margin is embedded across the entire probability surface
-"""
-)
+- High coverage ≠ positive EV  
+- Hedging does NOT remove bookmaker margin  
+- You are buying multiple negatively-priced probability products  
 
-st.divider()
+**This is not a football problem.  
+This is a pricing structure problem.**
+""")
 
-# ===============================
-# Panel 5: PnL Simulation (核心)
-# ===============================
-st.subheader("🟦 Expected PnL Simulation")
+if ev_sys1 < 0 and ev_sys2 < 0:
+    st.error("❌ Both systems are structurally negative EV")
+else:
+    st.warning("⚠️ One system shows abnormal result — recheck assumptions")
 
-st.markdown(
-    "Simulate repeated execution of this structure under **market-implied probabilities**. "
-    "This does **not** assume prediction skill."
-)
-
-bankroll = 100
-stake_per_leg = 6  # as per your example logic
-iterations = st.slider("Simulation Runs", 100, 5000, 1000, step=100)
-
-# Normalize probabilities for simulation (still negative EV due to odds)
-probs = df["Implied Probability"].values
-probs = probs / probs.sum()
-
-returns = []
-
-for _ in range(iterations):
-    outcome = np.random.choice(len(probs), p=probs)
-    pnl = -stake_per_leg * (len(probs) - 1)
-
-    win_odds = df.iloc[outcome]["Odds"]
-    pnl += stake_per_leg * win_odds
-
-    returns.append(pnl)
-
-returns = np.array(returns)
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("Avg PnL per Cycle", f"{returns.mean():.2f}")
-with col2:
-    st.metric("Win Rate", f"{(returns > 0).mean()*100:.1f}%")
-with col3:
-    st.metric("Max Drawdown (Sim)", f"{returns.min():.2f}")
-
-st.line_chart(returns.cumsum())
-
-st.caption(
-    "Even with diversified outcomes and high hit-rate, "
-    "expected PnL drifts downward due to structural pricing."
-)
-
-st.divider()
-
-# ===============================
-# Final Conclusion
-# ===============================
-st.subheader("🟥 Structural Conclusion")
-
-st.markdown(
-    """
-**This hedge construction is logically consistent and risk-aware.  
-However:**
-
-- The expectation is **mathematically negative**
-- Loss is driven by **pricing structure**, not poor selection
-- Long-term profitability is impossible under fixed bookmaker odds
-
-**This terminal demonstrates failure by design.**
-"""
-)
-
-st.caption(
-    "This tool is for analytical demonstration only. "
-    "It visualizes structural constraints, not betting advice."
-)
+st.caption("Demo purpose: reveal structural traps, not recommend betting.")
