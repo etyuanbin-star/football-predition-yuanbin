@@ -1,134 +1,169 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
 
 # ======================
-# 核心逻辑层 (Logic)
+# 1. 核心计算引擎 (Logic Layer)
 # ======================
+class BettingEngine:
+    @staticmethod
+    def get_implied_prob(odds):
+        return 1 / odds if odds > 0 else 0
 
-def calculate_implied_prob(odds):
-    """计算隐含概率，处理赔率为0的极端情况"""
-    return 1 / odds if odds > 0 else 0
+    @staticmethod
+    def calculate_ev(prob, odds, stake):
+        if odds <= 0 or stake <= 0: return 0.0
+        return (prob * (odds * stake - stake)) - ((1 - prob) * stake)
 
-def calculate_ev(prob, odds, stake):
-    """计算期望值 EV = (Win_Prob * Profit) - (Loss_Prob * Stake)"""
-    if odds <= 0 or stake <= 0:
-        return 0.0
-    profit = (odds * stake) - stake
-    return (prob * profit) - ((1 - prob) * stake)
+    @staticmethod
+    def run_monte_carlo(win_prob, odds, stake, initial_bankroll=10000, rounds=500):
+        """模拟长期资金曲线"""
+        # 生成基于伯努利分布的随机结果 (1为赢, 0为输)
+        results = np.random.choice([1, 0], size=rounds, p=[win_prob, 1 - win_prob])
+        
+        bankroll_history = [initial_bankroll]
+        current_balance = initial_bankroll
+        
+        for win in results:
+            if win:
+                current_balance += (odds * stake - stake)
+            else:
+                current_balance -= stake
+            bankroll_history.append(current_balance)
+            
+        return bankroll_history
 
 # ======================
-# 配置与样式
+# 2. 页面配置与样式
 # ======================
-st.set_page_config(page_title="Hedge Betting Trap Demo", layout="wide")
+st.set_page_config(page_title="Hedge Trap Analysis", layout="wide")
+
+st.markdown("""
+    <style>
+    .main { background-color: #f5f7f9; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    </style>
+    """, unsafe_allow_html=True)
 
 st.title("⚠️ Football Hedge Betting Trap Demo")
-st.caption("Insight: Pricing structure usually favors the bookmaker regardless of hedging.")
+st.caption("Deep Dive into Pricing Structures and Expected Value (EV)")
 
 # ======================
-# 输入区域 (UI - Sidebar or Columns)
+# 3. 侧边栏及全局参数
 # ======================
 with st.sidebar:
-    st.header("⚙️ Global Parameters")
-    stake_over = st.number_input("Over 2.5 Stake", value=100, step=10)
-    stake_scores_total = st.number_input("Score Combo Total Stake", value=100, step=10)
-    stake_anchor = st.number_input("Anchor Combo Stake", value=100, step=10)
-    
-st.divider()
+    st.header("💰 Investment Setup")
+    init_bankroll = st.number_input("Starting Bankroll ($)", value=10000)
+    sim_rounds = st.slider("Simulation Rounds", 100, 2000, 1000)
+    st.divider()
+    st.info("This tool demonstrates why high coverage doesn't guarantee profit due to bookmaker margins.")
 
+# ======================
+# 4. 主界面：输入区域
+# ======================
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Match A: Score Hedge + Over 2.5")
-    over25_odds = st.number_input("Over 2.5 Odds", 2.0, 5.0, 2.30, 0.05)
+    o25_odds = st.number_input("Over 2.5 Odds", 1.5, 5.0, 2.30)
+    o25_stake = st.number_input("Over 2.5 Stake ($)", value=100)
     
-    st.markdown("**Under 2.5 Score Odds (Select to Hedge)**")
-    # 使用表格布局输入，更美观
-    input_cols = st.columns(3)
-    score_data = [("1-0", 7.30), ("0-0", 7.20), ("0-1", 5.80), ("2-0", 14.0), ("1-1", 5.90), ("0-2", 10.0)]
-    
-    selected_scores = {}
-    for i, (score, default_val) in enumerate(score_data):
-        with input_cols[i % 3]:
-            val = st.number_input(score, value=default_val, key=f"score_{score}")
-            selected_scores[score] = val
-
-    score_filter_odds = st.slider("Min Odds to Include in Hedge", 1.0, 10.0, 6.0)
+    st.markdown("**Under 2.5 Scores (Hedge)**")
+    # 使用简洁的列布局输入比分赔率
+    sc_cols = st.columns(3)
+    score_odds = {
+        "1-0": sc_cols[0].number_input("1-0", value=7.3),
+        "0-0": sc_cols[1].number_input("0-0", value=7.2),
+        "0-1": sc_cols[2].number_input("0-1", value=5.8),
+        "2-0": sc_cols[0].number_input("2-0", value=14.0),
+        "1-1": sc_cols[1].number_input("1-1", value=5.9),
+        "0-2": sc_cols[2].number_input("0-2", value=10.0),
+    }
+    score_filter = st.slider("Include Odds >= ", 1.0, 15.0, 6.0)
+    score_total_stake = st.number_input("Score Total Stake ($)", value=100)
 
 with col2:
     st.subheader("Match B: High Win Anchor")
-    home_win_odds = st.number_input("Match B Home Win Odds (Anchor)", 1.05, 2.0, 1.25, 0.01)
+    mB_win_odds = st.number_input("Match B Home Win Odds", 1.1, 2.0, 1.25)
+    mB_stake = st.number_input("Anchor Combo Stake ($)", value=100)
     
-    st.markdown("**Match A - Goal Distribution Odds**")
-    tg_0 = st.number_input("0 Goals Odds", value=7.20)
-    tg_1 = st.number_input("1 Goal Odds", value=3.60)
-    tg_2 = st.number_input("2 Goals Odds", value=3.20)
+    st.markdown("**Match A Goal Distribution (for Combo)**")
+    tg0 = st.number_input("0 Goals Odds", value=7.20)
+    tg1 = st.number_input("1 Goal Odds", value=3.60)
+    tg2 = st.number_input("2 Goals Odds", value=3.20)
 
 # ======================
-# 计算层 (Calculation)
+# 5. 计算逻辑
 # ======================
+engine = BettingEngine()
 
-# 系统 1 计算
-valid_scores = {k: v for k, v in selected_scores.items() if v >= score_filter_odds}
-over_prob = calculate_implied_prob(over25_odds)
-scores_prob_sum = sum(calculate_implied_prob(v) for v in valid_scores.values())
+# --- System 1 Calculations ---
+active_scores = {k: v for k, v in score_odds.items() if v >= score_filter}
+num_active = len(active_scores)
+prob_o25 = engine.get_implied_prob(o25_odds)
+prob_scores = sum(engine.get_implied_prob(v) for v in active_scores.values())
 
-ev_over = calculate_ev(over_prob, over25_odds, stake_over)
+sys1_coverage = prob_o25 + prob_scores
+sys1_total_stake = o25_stake + score_total_stake
+
+ev_o25 = engine.calculate_ev(prob_o25, o25_odds, o25_stake)
 ev_scores = 0
-if valid_scores:
-    s_per_score = stake_scores_total / len(valid_scores)
-    for o in valid_scores.values():
-        p = calculate_implied_prob(o)
-        ev_scores += calculate_ev(p, o, s_per_score)
+if num_active > 0:
+    stake_per_s = score_total_stake / num_active
+    for o in active_scores.values():
+        ev_scores += engine.calculate_ev(engine.get_implied_prob(o), o, stake_per_s)
+sys1_ev = ev_o25 + ev_scores
 
-sys1_ev_total = ev_over + ev_scores
-sys1_coverage = over_prob + scores_prob_sum
+# --- System 2 Calculations ---
+prob_tg = sum(engine.get_implied_prob(v) for v in [tg1, tg2])
+prob_mB = engine.get_implied_prob(mB_win_odds)
+combo_prob = prob_tg * prob_mB
+combo_odds = ( (tg1 + tg2)/2 ) * mB_win_odds # 简化组合赔率模型
 
-# 系统 2 计算 (Match A 1-2 Goals + Match B Win)
-tg_selected = {"1G": tg_1, "2G": tg_2}
-tg_prob_sum = sum(calculate_implied_prob(v) for v in tg_selected.values())
-home_win_prob = calculate_implied_prob(home_win_odds)
-
-# 串关赔率计算 (乘法原则)
-combo_odds = (sum(tg_selected.values()) / 2) * home_win_odds 
-combo_prob = tg_prob_sum * home_win_prob
-ev_combo = calculate_ev(combo_prob, combo_odds, stake_anchor)
-
-sys2_ev_total = ev_over + ev_combo
+sys2_ev = ev_o25 + engine.calculate_ev(combo_prob, combo_odds, mB_stake)
+sys2_total_stake = o25_stake + mB_stake
 
 # ======================
-# 结果展示层 (Results)
+# 6. 结果展示与模拟图表
 # ======================
 st.divider()
-st.subheader("📊 Strategy Evaluation")
+st.subheader("📊 Performance Analysis")
 
-res_df = pd.DataFrame({
-    "Strategy": ["System 1 (Wide Hedge)", "System 2 (Parlay Anchor)"],
-    "Hit Illusion (Prob)": [f"{sys1_coverage:.2%}", f"{combo_prob:.2%}"],
-    "Total Stake ($)": [stake_over + stake_scores_total, stake_over + stake_anchor],
-    "Total EV ($)": [round(sys1_ev_total, 2), round(sys2_ev_total, 2)]
-})
+# 数据看板
+res_col1, res_col2, res_col3 = st.columns(3)
+res_col1.metric("System 1 EV", f"${sys1_ev:.2f}", delta=f"{sys1_ev/(sys1_total_stake):.2%}", delta_color="normal")
+res_col2.metric("System 2 EV", f"${sys2_ev:.2f}", delta=f"{sys2_ev/(sys2_total_stake):.2%}", delta_color="normal")
+res_col3.metric("Max Coverage", f"{sys1_coverage:.1%}")
 
-# 突出显示 EV 列
-def color_ev(val):
-    color = 'red' if val < 0 else 'green'
-    return f'color: {color}; font-weight: bold'
+# 蒙特卡洛模拟图表
+st.markdown("### 📉 Projected Capital Decay (Monte Carlo)")
+sim_data = engine.run_monte_carlo(sys1_coverage, 1.0, sys1_total_stake * (1 + sys1_ev/sys1_total_stake), init_bankroll, sim_rounds)
 
-st.table(res_df.style.applymap(color_ev, subset=['Total EV ($)']))
+fig = go.Figure()
+fig.add_trace(go.Scatter(y=sim_data, mode='lines', name='Total Balance', line=dict(color='#EF553B', width=2)))
+fig.update_layout(
+    hovermode="x unified",
+    template="plotly_white",
+    xaxis_title="Bets Placed",
+    yaxis_title="Bankroll ($)",
+    showlegend=False,
+    margin=dict(l=20, r=20, t=40, b=20)
+)
+st.plotly_chart(fig, use_container_width=True)
 
-# 增加可视化对比
-st.bar_chart(res_df.set_index("Strategy")["Total EV ($)"])
+
 
 # ======================
-# 陷阱揭示与总结
+# 7. 陷阱教育 (The "Why")
 # ======================
-st.subheader("🚨 Why the House Always Wins")
+st.divider()
+exp1 = st.expander("🔍 Why does this graph go down even with high coverage?")
+exp1.write("""
+1. **The Overround (Margin)**: Every odds provided by a bookmaker has a built-in fee. When you 'hedge', you aren't removing risk; you are multiplying fees.
+2. **Probability vs. Price**: You might hit your bet 90% of the time, but if you are paid at odds that only represent 85% probability, you lose in the long run.
+3. **Compound Negative EV**: Combining Match A and Match B (System 2) often compounds the house edge.
+""")
 
-with st.expander("Click to see the mathematical trap"):
-    st.write("""
-    1. **Margin Stacking**: Each time you add a selection to a 'hedge', you are paying the bookmaker's margin again.
-    2. **Probability Illusion**: A $90\%$ coverage sounds safe, but if the combined EV is $-5\%$, you are simply losing money $5\%$ faster.
-    3. **The Anchor Trap**: Match B (the 'banker') adds risk without adding relative value if its odds already reflect its true probability.
-    """)
-
-if sys1_ev_total < 0 and sys2_ev_total < 0:
-    st.error(f"Financial Verdict: Both systems lead to an expected loss of approximately ${abs(min(sys1_ev_total, sys2_ev_total)):.2f} per cycle.")
+if sys1_ev < 0:
+    st.error(f"Financial Summary: System 1 has a structural loss of {abs(sys1_ev/sys1_total_stake):.2%} per bet.")
