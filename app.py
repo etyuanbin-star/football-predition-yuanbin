@@ -58,6 +58,8 @@ with col_tri:
     st.write("### 🔺 The Impossible Trinity Monitor")
     tri_index = pred_prob * o25_odds
     
+    
+    
     if tri_index > 1.05:
         st.error(f"Index {tri_index:.2f}: 【Mathematical Illusion】\nThis combination rarely exists in real markets. Likely a scam or error.")
     elif tri_index > 0.95:
@@ -125,7 +127,8 @@ with c2:
         if holes.empty:
             st.success("✨ Mathematical Coverage achieved (Check if profit margin is too thin).")
         else:
-            st.warning(f"🚨 Blindspot Alert: If the result is {', '.join(holes['Outcome'].tolist())}, you lose money.")
+            hole_names = ", ".join(holes['Outcome'].tolist())
+            st.warning(f"🚨 Blindspot Alert: If the result is {hole_names}, you lose money.")
 
 # --- 5. Educational Module: Equity Curve ---
 st.divider()
@@ -135,8 +138,12 @@ ops_curve = [10000]
 no_ops_curve = [10000]
 
 for _ in range(rounds):
-    change = np.random.choice([ev if ev != 0 else -0.02, -0.05]) 
-    ops_curve.append(ops_curve[-1] * (1 + change))
+    # Simulated outcome based on EV
+    change = np.random.choice([adjusted_ev_odds - 1 if adjusted_ev_odds > 1 else -0.02, -1.0])
+    # Apply small leverage/risk per trade
+    risk_percent = 0.05 
+    outcome = np.random.choice([risk_percent * (adjusted_ev_odds - 1), -risk_percent], p=[pred_prob, 1-pred_prob])
+    ops_curve.append(ops_curve[-1] * (1 + outcome))
     no_ops_curve.append(10000)
 
 chart_df = pd.DataFrame({
