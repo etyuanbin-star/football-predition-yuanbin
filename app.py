@@ -125,4 +125,28 @@ with c2:
         if holes.empty:
             st.success("✨ Mathematical Coverage achieved (Check if profit margin is too thin).")
         else:
-            st.warning(f"🚨 Blindspot Alert: If the result is {', '.join(holes['Outcome'].tolist
+            st.warning(f"🚨 Blindspot Alert: If the result is {', '.join(holes['Outcome'].tolist())}, you lose money.")
+
+# --- 5. Educational Module: Equity Curve ---
+st.divider()
+st.subheader("📉 The Truth: Over-Trading vs. Disciplined Patience")
+rounds = 50
+ops_curve = [10000]
+no_ops_curve = [10000]
+
+for _ in range(rounds):
+    change = np.random.choice([ev if ev != 0 else -0.02, -0.05]) 
+    ops_curve.append(ops_curve[-1] * (1 + change))
+    no_ops_curve.append(10000)
+
+chart_df = pd.DataFrame({
+    "Trials": np.arange(rounds + 1),
+    "Aggressive Trading (Neg EV)": ops_curve,
+    "Staying Out (Patience)": no_ops_curve
+})
+st.line_chart(chart_df.set_index("Trials"))
+st.caption("Note: In a Negative EV system, the green line (doing nothing) beats 90% of active participants.")
+
+# --- 6. Footer ---
+st.markdown("---")
+st.markdown("<h3 style='text-align: center; color: gray;'>The more you 'lose' in this lab, the more you save in the real world.</h3>", unsafe_allow_html=True)
