@@ -2,120 +2,94 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 
-st.set_page_config(page_title="足球投注对冲沙盘", layout="wide")
+st.set_page_config(page_title="博彩真相：庄家视角", layout="wide")
 
-st.title("⚽ 足球对冲投注：策略沙盘")
-st.markdown("在这个模拟器中，你可以验证：**‘大球 + 比分对冲’到底能不能稳赚不赔？’**")
+st.title("🛡️ 足球投注：庄家抽水与对冲实验场")
+st.markdown("为什么长期玩一定会输？通过计算**抽水率**，你会发现庄家在开赛前就已经赢了。")
 
-# --- 1. 设置区 (侧边栏) ---
+# --- 1. 赔率设置 (侧边栏) ---
 with st.sidebar:
-    st.header("⚙️ 市场赔率设定")
-    o25_odds = st.number_input("大球 (Over 2.5) 赔率", value=2.25, min_value=1.01, step=0.01)
+    st.header("⚖️ 市场赔率环境")
+    o25_odds = st.number_input("全场大球 (Over 2.5) 赔率", value=2.25, step=0.05)
     
     st.divider()
-    st.subheader("Under 2.5 比分赔率")
+    st.subheader("比分赔率设定")
     score_list = ["0-0", "1-0", "0-1", "1-1", "2-0", "0-2"]
     default_odds = [10.0, 8.0, 7.5, 6.5, 12.0, 11.0]
     scores_config = {s: st.number_input(f"{s} 赔率", value=d) for s, d in zip(score_list, default_odds)}
 
-# --- 2. 投注沙盘操作区 ---
-col_input, col_viz = st.columns([1, 1], gap="large")
-active_bets = []
+# --- 2. 核心分析：抽水率计算 ---
+# 所有的物理结果：6个比分 + 大球
+# 注意：这其实并未覆盖所有结果（如1-2, 2-1也是大球，但0-3或1-3等被包含在大球里了）
+all_implied_probs = [1/o25_odds] + [1/v for v in scores_config.values()]
+total_implied_prob = sum(all_implied_probs)
+overround = (total_implied_prob - 1) * 100
 
-with col_input:
-    st.subheader("🕹️ 策略方案配置")
+# --- 3. 主界面展示 ---
+col_analysis, col_sandbox = st.columns([1, 2], gap="large")
+
+with col_analysis:
+    st.subheader("🔬 庄家利润分析")
+    st.metric("庄家总抽水 (Overround)", f"{overround:.2f}%")
     
-    # 大球投注块
-    with st.container(border=True):
-        st.write("🔥 **主方案：大球投注**")
-        use_o25 = st.toggle("开启大球投注", value=True)
-        o25_stake = st.number_input("大球投入本金 ($)", value=100, step=10) if use_o25 else 0
-        if use_o25 and o25_stake > 0:
-            active_bets.append({"name": "大球项", "odds": o25_odds, "stake": o25_stake, "type": "OVER"})
+    if overround > 0:
+        st.error(f"庄家在这组赔率里多算了 {overround:.2f}% 的概率。这意味着你每投 100 元，理论上已经亏了 {overround:.2f} 元给庄家。")
+    
+    # 抽水构成饼图
+    prob_data = pd.DataFrame({
+        "结果": ["全场大球"] + score_list,
+        "隐含概率": [1/o25_odds] + [1/v for v in scores_config.values()]
+    })
+    fig_pie = px.pie(prob_data, values='隐含概率', names='结果', title="赔率结构分布")
+    st.plotly_chart(fig_pie, use_container_width=True)
+    
 
-    # 比分对冲块
-    st.write("🛡️ **防守方案：小球比分对冲**")
-    score_grid = st.columns(2)
+with col_sandbox:
+    st.subheader("🕹️ 策略自由模拟")
+    active_bets = []
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.toggle("投注大球", value=True):
+            amt = st.number_input("大球金额", value=100)
+            active_bets.append({"name": "大球", "odds": o25_odds, "stake": amt, "is_over": True})
+    
+    st.write("**具体比分对冲：**")
+    score_cols = st.columns(3)
     for i, s in enumerate(score_list):
-        with score_grid[i % 2]:
-            with st.container(border=True):
-                if st.checkbox(f"对冲 {s}", key=f"chk_{s}"):
-                    s_stake = st.number_input(f"投入 ($)", value=20, step=5, key=f"v_{s}")
-                    if s_stake > 0:
-                        active_bets.append({"name": s, "odds": scores_config[s], "stake": s_stake, "type": "SCORE"})
+        with score_cols[i % 3]:
+            if st.checkbox(f"投 {s}", key=f"c_{s}"):
+                amt = st.number_input(f"金额", value=20, key=f"a_{s}", label_visibility="collapsed")
+                active_bets.append({"name": s, "odds": scores_config[s], "stake": amt, "is_over": False})
 
     total_stake = sum(b['stake'] for b in active_bets)
-    st.divider()
-    st.metric("📊 当前方案总投入", f"${total_stake}")
-
-# --- 3. 逻辑计算引擎 ---
-# 定义所有可能发生的赛果
-possible_outcomes = [
-    {"name": "0-0", "is_over": False},
-    {"name": "1-0", "is_over": False},
-    {"name": "0-1", "is_over": False},
-    {"name": "1-1", "is_over": False},
-    {"name": "2-0", "is_over": False},
-    {"name": "0-2", "is_over": False},
-    {"name": "3球及以上(大球)", "is_over": True},
-    {"name": "未覆盖的小球(如2-1, 1-2)", "is_over": True}, # 实际上2-1也是大球，归类为大球即可
-]
-
-analysis_data = []
-for outcome in possible_outcomes:
-    total_payout = 0
-    for bet in active_bets:
-        # 如果是“大球项”，且结果是进球数 >= 3，则中奖
-        if bet['type'] == "OVER" and outcome['is_over']:
-            total_payout += bet['stake'] * bet['odds']
-        # 如果是“比分项”，且名字完全匹配，则中奖
-        elif bet['type'] == "SCORE" and bet['name'] == outcome['name']:
-            total_payout += bet['stake'] * bet['odds']
     
-    net_profit = total_payout - total_stake
-    analysis_data.append({"结果": outcome['name'], "净盈亏": net_profit})
-
-df_analysis = pd.DataFrame(analysis_data)
-
-# --- 4. 实时分析展示 ---
-with col_viz:
-    st.subheader("📈 策略实时表现")
+    # 计算盈亏数据
+    outcomes = score_list + ["大球结果"]
+    df_res = []
+    for out in outcomes:
+        income = 0
+        is_o = (out == "大球结果")
+        for b in active_bets:
+            if (b['is_over'] and is_o) or (b['name'] == out):
+                income += b['stake'] * b['odds']
+        df_res.append({"赛果": out, "净盈亏": income - total_stake})
     
-    if total_stake > 0:
-        # 盈亏条形图
-        fig = px.bar(
-            df_analysis, x="结果", y="净盈亏", color="净盈亏",
-            color_continuous_scale=["#FF4B4B", "#00C853"],
-            text_auto='.2f',
-            title="不同赛果下的利润/亏损"
-        )
-        fig.add_hline(y=0, line_dash="dash", line_color="black")
-        st.plotly_chart(fig, use_container_width=True)
-        
-        
+    df_res = pd.DataFrame(df_res)
+    
+    # 盈亏图
+    fig_bar = px.bar(df_res, x="赛果", y="净盈亏", color="净盈亏", 
+                     color_continuous_scale=["#FF4B4B", "#00C853"], text_auto='.2f')
+    fig_bar.add_hline(y=0, line_dash="dash")
+    st.plotly_chart(fig_bar, use_container_width=True)
 
-        # 核心观察结论
-        o25_profit = df_analysis.loc[df_analysis['结果'] == "3球及以上(大球)", "净盈亏"].values[0]
-        
-        if o25_profit > 0:
-            st.success(f"✅ **大球盈利确认**：如果进球 > 2.5，你将获利 **${o25_profit:.2f}**。")
-        elif o25_profit < 0:
-            st.error(f"⚠️ **致命缺陷**：即便踢出了大球，你依然亏损 **${abs(o25_profit):.2f}**！(原因是你的对冲成本太高了)")
-        else:
-            st.info("⚖️ **盈亏平衡**：大球结果下你刚好保本。")
-
-        # 详细表
-        with st.expander("查看详细数据表"):
-            st.dataframe(df_analysis, use_container_width=True)
-    else:
-        st.info("请在左侧配置你的投注方案以开始模拟。")
-
-# --- 5. 策略总结 ---
+# --- 4. 总结 ---
 st.divider()
-st.subheader("💡 实验室心得")
-st.markdown("""
-- **为什么大球会亏钱？** 如果你的 `比分对冲总额` + `大球本金` > `大球本金 * 大球赔率`，那么即使大球中了，你也是亏的。
-- **完美的对冲**：试着调整筹码，让所有柱子（所有的赛果）都保持在 0 线以上。
-- **庄家抽水**：你会发现，在现实赔率下，很难让所有柱子都变绿。总有一个结果是红色的“坑”。
+st.subheader("💡 核心真相：为什么没有 1 赔 3？")
+st.markdown(f"""
+1. **价格不对称**：如果一个结果发生的概率是 33%，庄家只会给你 2.8 或 2.5 的赔率（而不是 3.0）。
+2. **风险不对称**：当你通过对冲把胜率提高到 75% 时，那剩下的 25% 盲区赔率被压低到极点。
+3. **数学收割**：当前的抽水率为 **{overround:.2f}%**。这意味着无论你怎么通过“自由选择”来组合，你都在玩一个**胜算被提前扣除**的游戏。
 """)
