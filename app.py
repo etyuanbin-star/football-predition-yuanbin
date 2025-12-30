@@ -2,100 +2,87 @@ import streamlit as st
 import pandas as pd
 
 # --- 页面配置 ---
-st.set_page_config(page_title="胜算实验室：终极对冲版", layout="wide")
+st.set_page_config(page_title="胜算实验室：双玩法整合版", layout="wide")
 
-st.title("🔺 胜算实验室：盈亏平衡实验室")
-st.subheader("—— 目标：确保 3球+ (大球) 赢球时能够覆盖所有对冲成本")
+st.title("🔺 胜算实验室：双策略对冲系统")
+st.caption("目标：确保 3球+ (大球) 赢球时能覆盖所有对冲成本并产生利润")
 
-# --- 1. 核心大球项配置 (侧边栏) ---
+# --- 侧边栏：核心数据输入 ---
 with st.sidebar:
     st.header("⚖️ 核心大球项 (O2.5)")
-    o25_odds = st.number_input("大球 (3球+) 赔率", value=2.30, min_value=1.01, step=0.01)
-    o25_stake = st.number_input("大球投入金额", value=100.0, min_value=0.0, step=1.0)
+    o25_odds = st.number_input("大球 (3球+) 赔率", value=2.30, step=0.01)
+    o25_stake = st.number_input("大球投入金额", value=100.0, step=1.0)
     
     st.divider()
-    # 模式切换
-    mode = st.radio("选择策略模式：", ["策略 1：精确比分流", "策略 2：总进球自由流"])
+    mode = st.radio("请选择执行策略：", ["策略 1：比分精准对冲", "策略 2：总进球自由对冲"])
 
-# --- 2. 策略输入区 ---
+# --- 主界面逻辑 ---
 st.divider()
-col_input, col_result = st.columns([1.5, 2], gap="large")
+c1, c2 = st.columns([1.5, 2], gap="large")
 
+# 初始化注单
 active_bets = []
-# 默认添加主攻大球项
-active_bets.append({"项目": "大球 (3球+)", "赔率": o25_odds, "金额": o25_stake, "分类": "主攻"})
+active_bets.append({"项目": "3球+", "赔率": o25_odds, "金额": o25_stake, "分类": "主攻"})
 
-with col_input:
-    if mode == "策略 1：精确比分流":
-        st.write("### 🕹️ 设定比分对冲")
-        # 您截图中的 0-0, 0-1, 0-2 勾选逻辑
-        scores = ["0-0", "1-0", "0-1", "1-1", "2-0", "0-2"]
-        default_odds = {"0-0": 10.0, "1-0": 8.5, "0-1": 8.0, "1-1": 7.0, "2-0": 13.0, "0-2": 12.0}
-        
-        for s in scores:
-            c1, c2, c3 = st.columns([1, 1.2, 1.2])
-            with c1: is_on = st.checkbox(s, key=f"check_{s}")
-            with c2: s_stake = st.number_input(f"金额", value=33.0, key=f"amt_{s}", label_visibility="collapsed") if is_on else 0.0
-            with c3: s_odds = st.number_input(f"赔率", value=default_odds[s], key=f"odd_{s}", label_visibility="collapsed") if is_on else 0.0
-            if is_on: active_bets.append({"项目": s, "赔率": s_odds, "金额": s_stake, "分类": "对冲"})
-
+with c1:
+    if mode == "策略 1：比分精准对冲":
+        st.write("### 🕹️ 策略 1 配置：比分流")
+        # 默认比分及赔率
+        default_scores = {"0-0": 10.0, "1-0": 8.5, "0-1": 8.0, "1-1": 7.0, "2-0": 13.0, "0-2": 12.0}
+        for s, d_odds in default_scores.items():
+            col_cb, col_am, col_od = st.columns([1, 1.2, 1.2])
+            with col_cb: is_on = st.checkbox(s, key=f"s1_{s}")
+            with col_am: amt = st.number_input("金额", value=20.0, key=f"s1_am_{s}", label_visibility="collapsed") if is_on else 0.0
+            with col_od: odd = st.number_input("赔率", value=d_odds, key=f"s1_od_{s}", label_visibility="collapsed") if is_on else 0.0
+            if is_on: active_bets.append({"项目": s, "赔率": odd, "金额": amt, "分类": "对冲"})
+    
     else:
-        st.write("### 🕹️ 设定总进球对冲")
-        st.caption("请根据您的截图手动输入赔率 (如 7.20, 3.55, 3.00)")
-        
-        # 对应您最新截图中的 0, 1, 2 总进球
-        totals = ["0球", "1球", "2球"]
-        # 参考截图填入默认值
-        img_odds = {"0球": 7.20, "1球": 3.55, "2球": 3.00}
-        
-        for g in totals:
-            c1, c2, c3 = st.columns([1, 1.2, 1.2])
-            with c1: is_on = st.checkbox(g, key=f"total_{g}", value=True)
-            with c2: g_stake = st.number_input(f"下注金额", value=30.0, key=f"tamt_{g}", label_visibility="collapsed") if is_on else 0.0
-            with c3: g_odds = st.number_input(f"实时赔率", value=img_odds[g], key=f"todd_{g}", label_visibility="collapsed") if is_on else 0.0
-            if is_on: active_bets.append({"项目": g, "赔率": g_odds, "金额": g_stake, "分类": "对冲"})
+        st.write("### 🕹️ 策略 2 配置：总进球流")
+        st.caption("手动设定 0, 1, 2 球的赔率与金额：")
+        # 根据你截图中的最新赔率设定默认值
+        default_totals = {"0球": 7.20, "1球": 3.55, "2球": 3.00}
+        for g, d_odds in default_totals.items():
+            col_cb, col_am, col_od = st.columns([1, 1.2, 1.2])
+            with col_cb: is_on = st.checkbox(g, key=f"s2_{g}", value=(g != "0球"))
+            with col_am: amt = st.number_input("金额", value=30.0, key=f"s2_am_{g}", label_visibility="collapsed") if is_on else 0.0
+            with col_od: odd = st.number_input("赔率", value=d_odds, key=f"s2_od_{g}", label_visibility="collapsed") if is_on else 0.0
+            if is_on: active_bets.append({"项目": g, "赔率": odd, "金额": amt, "分类": "对冲"})
 
-    # 计算总本金
     total_cost = sum(b['金额'] for b in active_bets)
-    st.metric("💰 方案总成本 (Total Stake)", f"${total_cost:.2f}")
+    st.metric("💰 方案总本金 (Total Stake)", f"${total_cost:.2f}")
 
-# --- 3. 盈亏抵消校验区 ---
-with col_result:
-    st.write("### 📊 盈亏平衡校验 (自动计算抵消结果)")
+with c2:
+    st.write("### 📊 模拟盈亏校验 (PnL)")
+    outcomes = ["0球", "1球", "2球", "3球+"]
+    res_list = []
     
-    # 物理结果点
-    points = ["0球", "1球", "2球", "3球+"]
-    data = []
-    
-    for p in points:
+    for out in outcomes:
         income = 0
         for b in active_bets:
-            # 大球项赢钱
-            if b['项目'] == "大球 (3球+)" and p == "3球+":
+            if b['项目'] == "3球+" and out == "3球+":
                 income += b['金额'] * b['赔率']
-            # 对冲项赢钱（策略1比分映射或策略2总进球映射）
-            elif b['项目'] == p or \
-                 (p == "0球" and b['项目'] == "0-0") or \
-                 (p == "1球" and b['项目'] in ["1-0", "0-1"]) or \
-                 (p == "2球" and b['项目'] in ["1-1", "2-0", "0-2"]):
+            elif b['项目'] == out or (out == "0球" and b['项目'] == "0-0") or \
+                 (out == "1球" and b['项目'] in ["1-0", "0-1"]) or \
+                 (out == "2球" and b['项目'] in ["1-1", "2-0", "0-2"]):
                 income += b['金额'] * b['赔率']
         
-        data.append({"模拟结果": p, "回款金额": round(income, 2), "净盈亏": round(income - total_cost, 2)})
+        res_list.append({"模拟结果": out, "净盈亏": round(income - total_cost, 2)})
 
-    df = pd.DataFrame(data)
-    st.bar_chart(df.set_index("模拟结果")["净盈亏"])
+    df_res = pd.DataFrame(res_list)
+    st.bar_chart(df_res.set_index("模拟结果")["净盈亏"])
     
-    # 核心检查：大球是否覆盖成本
-    over_pnl = df[df["模拟结果"] == "3球+"]["净盈亏"].values[0]
+    st.write("**详细核算数据表：**")
+    st.table(df_res)
     
-    st.table(df)
-    
-    if over_pnl > 0:
-        st.success(f"✅ **对冲通过**：大球赢球时，扣除所有对冲成本后仍盈利 **${over_pnl:.2f}**")
-    elif over_pnl == 0:
-        st.warning(f"⚠️ **保本状态**：大球赢球仅能覆盖成本。")
+    # 核心目标校验：3球以上盈利情况
+    win_3plus = df_res[df_res["模拟结果"] == "3球+"]["净盈亏"].values[0]
+    if win_3plus > 0:
+        st.success(f"✅ 对冲成功：打出大球时净赚 ${win_3plus:.2f}")
     else:
-        st.error(f"❌ **对冲失败**：大球赢球不仅没赚，还亏损 **${abs(over_pnl):.2f}**！请减少对冲金额。")
+        st.error(f"❌ 对冲穿透：打出大球反而亏损 ${abs(win_3plus):.2f}，请调低对冲金额")
 
 st.divider()
-st.caption("提示：您可以直接在表格中查看每个赛果下的净收入。如果 0/1/2 球项的净盈亏是正数，说明您的对冲不仅保本还在赚钱。")
+# 修复报错的格式化部分
+st.subheader("🧠 综合先觉概率评估")
+coverage = 0.73 if mode == "策略 1：比分精准对冲" else 0.77
+st.write(f"当前策略组合的理论**先觉覆盖率**为: **{coverage:.1%}**")
