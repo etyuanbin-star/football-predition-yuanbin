@@ -11,20 +11,9 @@ st.caption("核心修正：比分流 6 种组合独立结算，严禁共用总�
 with st.expander("📖 胜算实验室：核心策略白皮书", expanded=True):
     st.markdown("""
     ### 🛡️ 核心思想：结构化风险转移与生存博弈
-    本系统建立在承认“庄家优势”的前提下，通过数学手段将盲目博弈转化为理性的风险管理。
-
-    #### **1. 策略 A：比分流 (精准点对点防御)**
-    - **核心逻辑**：针对 0-2 球区间内最可能出现的 **6 种具体比分**进行独立防御。
-    - **结算维度**：每一个比分都是唯一的独立赛果。**未勾选的比分即便总进球数相同，也视为防御真空区。**
-    - **风险本质**：不求在防御区盈利，只求大球失败时精确回收本金，延长生存周期。
-
-    #### **2. 策略 B：复式串关流 (杠杆生存)**
-    - **核心逻辑**：利用“低赔稳胆”拉高 0, 1, 2 球区间的回报。
-    - **成本控制**：总本金 = 大球本金 + 复式总投入。
-
-    #### **3. 风险监控：承认玩家无法赢过庄家**
-    - **博弈本质**：长期博弈中玩家无法赢过庄家。
-    - **EV 意义**：量化对冲成本导致的“失血速度”，提醒玩家不要过度防守。
+    #### **策略 A：比分流 (精准点对点防御)**
+    - **独立结算**：每一个比分（如 1-0）都是独立的单元。
+    - **防御真空**：如果你只买了 1-0 和 2-0，当开出 0-1 时，即便总进球数很少，该防御区也视为“击穿”。
     """)
 
 # --- 3. 侧边栏输入 ---
@@ -44,11 +33,12 @@ with st.sidebar:
 st.divider()
 col_in, col_out = st.columns([1.6, 2], gap="large")
 
-active_bets = [] # 存储有效注单
+active_bets = [] 
 
 if mode == "策略 1：比分精准流":
     with col_in:
         st.write("### 🕹️ 设定比分对冲 (点对点校验)")
+        # 定义比分池
         scores = ["0-0", "1-0", "0-1", "1-1", "2-0", "0-2"]
         default_odds = {"0-0": 10.0, "1-0": 8.5, "0-1": 8.0, "1-1": 7.0, "2-0": 13.0, "0-2": 12.0}
         
@@ -60,28 +50,42 @@ if mode == "策略 1：比分精准流":
             if is_on: 
                 active_bets.append({"item": s, "odd": s_odd, "stake": s_amt})
         
+        # 将大球项加入投注清单
         active_bets.append({"item": "3球+", "odd": o25_odds, "stake": o25_stake})
         total_cost = sum(b['stake'] for b in active_bets)
         st.metric("💰 方案实际总投入", f"${total_cost:.2f}")
 
     with col_out:
-        st.write("### 📊 模拟盈亏校验 (6 组独立结算)")
-        # 核心：这里的 outcomes 必须是具体的比分组合
+        st.write("### 📊 模拟盈亏校验 (点对点比分结算)")
+        
+        # 这里包含所有可能的模拟情况（含未勾选的比分，以展示“真空区”）
         test_outcomes = ["0-0", "1-0", "0-1", "1-1", "2-0", "0-2", "3球+"]
         res_list = []
+        
         for out in test_outcomes:
-            # 只有项目完全一致时才算中奖，实现点对点精准校验
+            # 只有当模拟赛果完全等于投注项时，该注单才产生收益
+            # 即使模拟赛果是 0-0，如果 active_bets 里没勾选 0-0，income 也会是 0
             income = sum(b['stake'] * b['odd'] for b in active_bets if b['item'] == out)
-            res_list.append({"模拟赛果": out, "净盈亏": round(income - total_cost, 2)})
+            net_profit = income - total_cost
+            res_list.append({"模拟赛果": out, "净盈亏": round(net_profit, 2)})
         
         df = pd.DataFrame(res_list)
+        
+        # 视觉反馈：红色表示亏损，绿色表示盈利
         st.bar_chart(df.set_index("模拟赛果")["净盈亏"])
-        st.table(df)
+        
+        # 使用表格列出详细数据，并标记盈亏状态
+        def color_profit(val):
+            color = 'red' if val < 0 else 'green'
+            return f'color: {color}'
+        
+        st.table(df.style.applymap(color_profit, subset=['净盈亏']))
 
+# --- 策略 2 逻辑保持类似处理 ---
 else:
     with col_in:
         st.write("### 🕹️ 设定总进球对冲")
-        strong_win = st.number_input("稳胆赔率", value=1.35)
+        strong_win = st.number_input("稳胆赔率 (串关加成)", value=1.35)
         multi_stake = st.number_input("复式对冲总投入", value=100.0)
         
         totals = ["0球", "1球", "2球"]
@@ -97,6 +101,7 @@ else:
         if selected:
             share = multi_stake / len(selected)
             for item in selected:
+                # 串关逻辑：进球赔率 * 稳胆赔率
                 active_bets.append({"item": item['name'], "odd": item['odd'] * strong_win, "stake": share})
         
         active_bets.append({"item": "3球+", "odd": o25_odds, "stake": o25_stake})
@@ -117,6 +122,15 @@ else:
 
 # --- 5. 统一风险监控 ---
 st.divider()
+# 简单的 EV 计算逻辑：假设除了大球外，其余模拟赛果平分剩余概率
 other_prob = (1 - pred_prob) / (len(test_outcomes) - 1)
 ev_val = sum(row['净盈亏'] * (pred_prob if row['模拟赛果'] == "3球+" else other_prob) for _, row in df.iterrows())
-st.subheader(f"⚠️ 风险监控仪：方案预期 EV 为 ${ev_val:.2f}")
+
+c1, c2 = st.columns(2)
+with c1:
+    st.subheader(f"⚠️ 预期 EV: ${ev_val:.2f}")
+with c2:
+    if ev_val < 0:
+        st.error("警告：当前对冲成本过高，长期博弈预期为负。")
+    else:
+        st.success("提示：当前方案在预测概率下具有正向收益潜力。")
