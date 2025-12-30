@@ -779,7 +779,7 @@ if show_psychology:
     
     with col3:
         # 修正这里：将双引号改为单引号，或使用转义字符
-        trap5 = st.checkbox("我觉得自己有'特殊技巧'或'内幕'")
+        
         trap6 = st.checkbox("我用赌博来逃避压力")
     
     if any([trap1, trap2, trap3, trap4, trap5, trap6]):
