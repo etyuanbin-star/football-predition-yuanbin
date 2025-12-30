@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import random
-import plotly.graph_objects as go
-import plotly.express as px
 
 # 页面配置
 st.set_page_config(
@@ -65,6 +63,14 @@ with st.sidebar:
     # 风险参数
     st.subheader("🧠 风险参数")
     pred_prob = st.slider("预测大球概率 (%)", 10, 90, 45) / 100
+    
+    st.divider()
+    
+    # 模拟设置
+    show_simulation = st.checkbox("启用长期模拟", value=False)
+    if show_simulation:
+        sim_runs = st.slider("模拟次数", 100, 5000, 1000)
+        initial_bankroll = st.number_input("初始资金 ($)", value=1000.0, min_value=100.0)
 
 # --- 风险警示 ---
 st.markdown("""
@@ -137,32 +143,10 @@ if mode == "策略 1：比分精准对冲":
         
         df_results = pd.DataFrame(results)
         
-        # 使用 Plotly 创建交互式图表
-        fig = go.Figure()
-        
-        # 添加条形图
-        colors = ['#dc3545' if x < 0 else '#28a745' for x in df_results['净盈亏']]
-        
-        fig.add_trace(go.Bar(
-            x=df_results['模拟赛果'],
-            y=df_results['净盈亏'],
-            marker_color=colors,
-            text=df_results['净盈亏'].apply(lambda x: f'${x:+.0f}'),
-            textposition='auto',
-        ))
-        
-        # 添加零线
-        fig.add_hline(y=0, line_width=1, line_dash="dash", line_color="black")
-        
-        fig.update_layout(
-            title="各结果净盈亏分析",
-            xaxis_title="比赛结果",
-            yaxis_title="净盈亏 ($)",
-            showlegend=False,
-            height=400
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
+        # 使用 Streamlit 内置条形图
+        st.write("##### 盈亏条形图")
+        chart_data = df_results.set_index("模拟赛果")["净盈亏"]
+        st.bar_chart(chart_data)
         
         # 详细数据表
         st.write("##### 详细盈亏表")
@@ -179,6 +163,19 @@ if mode == "策略 1：比分精准对冲":
         # 显示表格
         styled_df = df_results.style.applymap(color_profit, subset=['净盈亏'])
         st.dataframe(styled_df, hide_index=True, use_container_width=True)
+        
+        # 总结统计
+        profitable = sum(1 for r in results if r['净盈亏'] > 0)
+        breakeven = sum(1 for r in results if r['净盈亏'] == 0)
+        losing = sum(1 for r in results if r['净盈亏'] < 0)
+        
+        st.info(f"""
+        **策略分析总结：**
+        - 覆盖赛果: {len(outcomes)} 种
+        - 盈利赛果: {profitable} 种 ({profitable/len(outcomes)*100:.1f}%)
+        - 保本赛果: {breakeven} 种
+        - 亏损赛果: {losing} 种 ({losing/len(outcomes)*100:.1f}%)
+        """)
 
 else:  # 策略 2：总进球复式对冲
     with col_strategy:
@@ -249,32 +246,10 @@ else:  # 策略 2：总进球复式对冲
         
         df_results = pd.DataFrame(results)
         
-        # 使用 Plotly 创建交互式图表
-        fig = go.Figure()
-        
-        # 添加条形图
-        colors = ['#dc3545' if x < 0 else '#28a745' for x in df_results['净盈亏']]
-        
-        fig.add_trace(go.Bar(
-            x=df_results['模拟赛果'],
-            y=df_results['净盈亏'],
-            marker_color=colors,
-            text=df_results['净盈亏'].apply(lambda x: f'${x:+.0f}'),
-            textposition='auto',
-        ))
-        
-        # 添加零线
-        fig.add_hline(y=0, line_width=1, line_dash="dash", line_color="black")
-        
-        fig.update_layout(
-            title="各结果净盈亏分析",
-            xaxis_title="比赛结果",
-            yaxis_title="净盈亏 ($)",
-            showlegend=False,
-            height=400
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
+        # 使用 Streamlit 内置条形图
+        st.write("##### 盈亏条形图")
+        chart_data = df_results.set_index("模拟赛果")["净盈亏"]
+        st.bar_chart(chart_data)
         
         # 详细数据表
         st.write("##### 详细盈亏表")
