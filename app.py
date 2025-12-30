@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 
 # 页面配置
 st.set_page_config(
-    page_title="胜算实验室：足球投注风控系统",
+    page_title="胜算实验室：策略2分析",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -43,22 +43,11 @@ st.markdown("""
         color: #dc3545;
         font-weight: bold;
     }
-    .neutral {
-        color: #6c757d;
-        font-weight: bold;
-    }
-    .metric-card {
-        background: #f8f9fa;
-        border-radius: 10px;
-        padding: 15px;
-        margin: 10px 0;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # --- 应用标题 ---
-st.markdown('<div class="main-header"><h1>🔺 胜算实验室：足球投注风控系统</h1><p>策略2：总进球+稳胆对冲策略分析</p></div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header"><h1>🔺 胜算实验室：策略2详细分析</h1><p>总进球复式 + 稳胆对冲策略</p></div>', unsafe_allow_html=True)
 
 # --- 侧边栏配置 ---
 with st.sidebar:
@@ -71,137 +60,127 @@ with st.sidebar:
     
     # 主投注设置
     st.subheader("💰 主投注设置")
-    over25_stake = st.number_input("Over 2.5 投注金额 (元)", min_value=50, max_value=5000, value=100, step=50)
-    over25_odds = st.number_input("Over 2.5 赔率", min_value=1.01, max_value=10.0, value=2.30, step=0.05)
+    over25_stake = st.number_input("Over 2.5 投注金额 ($)", min_value=10, max_value=10000, value=100, step=10)
+    over25_odds = st.number_input("Over 2.5 赔率", min_value=1.01, max_value=20.0, value=2.30, step=0.05)
     
     st.markdown("---")
     
     # 对冲投注设置
     st.subheader("🛡️ 对冲投注设置")
-    st.write("**总进球复式选项**")
+    hedge_stake = st.number_input("对冲投注总金额 ($)", min_value=10, max_value=10000, value=100, step=10)
     
     # 总进球选项
-    goal_options = ["0球", "1球", "2球"]
-    selected_goals = []
-    goal_odds = {}
+    st.write("**总进球复式选项**")
+    goals_options = {
+        "0球": {"selected": False, "odds": 7.20},
+        "1球": {"selected": True, "odds": 3.60},
+        "2球": {"selected": True, "odds": 3.20}
+    }
     
-    for goal in goal_options:
-        col1, col2 = st.columns([1, 2])
+    selected_goals = []
+    for goal, data in goals_options.items():
+        col1, col2 = st.columns([2, 3])
         with col1:
-            selected = st.checkbox(goal, value=(goal in ["1球", "2球"]), key=f"goal_{goal}")
+            selected = st.checkbox(goal, value=data["selected"], key=f"goal_{goal}")
+            goals_options[goal]["selected"] = selected
             if selected:
                 selected_goals.append(goal)
         with col2:
             if selected:
-                default_odds = {"0球": 7.20, "1球": 3.60, "2球": 3.20}
-                goal_odds[goal] = st.number_input(
+                goals_options[goal]["odds"] = st.number_input(
                     f"{goal}赔率", 
                     min_value=1.01, 
                     max_value=50.0, 
-                    value=default_odds.get(goal, 5.0), 
-                    step=0.1,
+                    value=data["odds"], 
+                    step=0.05,
                     key=f"odds_{goal}"
                 )
     
-    st.markdown("---")
-    
     # 稳胆比赛设置
+    st.markdown("---")
     st.subheader("🏆 稳胆比赛设置")
     strong_team_a = st.text_input("稳胆主队", value="布赖代合作")
     strong_team_b = st.text_input("稳胆客队", value="欧奈宰尹马")
-    
-    strong_odds = st.number_input("稳胆主胜赔率", min_value=1.01, max_value=5.0, value=1.25, step=0.05)
-    hedge_stake = st.number_input("对冲投注总金额 (元)", min_value=50, max_value=5000, value=100, step=50)
-    
-    st.markdown("---")
-    
-    # 计算对冲分配
-    if selected_goals:
-        stake_per_goal = hedge_stake / len(selected_goals)
-        st.info(f"每个总进球选项分配金额: {stake_per_goal:.2f}元")
-    else:
-        stake_per_goal = 0
-        st.warning("请至少选择一个总进球选项进行对冲")
+    strong_odds = st.number_input("稳胆主胜赔率", min_value=1.01, max_value=5.0, value=1.35, step=0.05)
 
 # --- 风险警示 ---
 st.markdown("""
 <div class="warning-box">
 ⚠️ <strong>策略2风险警示</strong>
-<p>您的策略存在以下重大风险：</p>
+<p><strong>核心风险：稳胆场次爆冷（平/负）</strong></p>
 <ul>
-<li><strong>稳胆场次爆冷（平/负）</strong>：对冲注立即失效，无论主比赛结果如何</li>
-<li><strong>总进球为0球</strong>：对冲策略不覆盖此情况</li>
-<li><strong>双重损失风险</strong>：稳胆爆冷 + 主赛小球 = 最大亏损</li>
-<li><strong>对冲注仅在以下条件同时满足时赢</strong>：
-  <ol>
-  <li>主比赛总进球为选中的选项（1球或2球）</li>
-  <li>稳胆场次主队获胜</li>
-  </ol>
-</li>
+<li>对冲注仅在以下条件同时满足时赢：总进球为选中的选项（1球或2球） <strong>且</strong> 稳胆主胜</li>
+<li>稳胆场次平或负时，对冲注立即失效</li>
+<li>总进球为0球时，对冲策略不覆盖</li>
 </ul>
 </div>
 """, unsafe_allow_html=True)
 
 # --- 策略说明 ---
-st.header("🎯 策略2说明")
+st.header("🎯 策略说明")
 st.markdown(f"""
 <div class="strategy-box">
 <h4>您的投注策略构成：</h4>
 <ol>
 <li><strong>主投注</strong>: {main_team_a} vs {main_team_b} 的 <strong>Over 2.5</strong>
     <ul>
-        <li>投注金额: <strong>{over25_stake}元</strong></li>
+        <li>投注金额: <strong>${over25_stake:.2f}</strong></li>
         <li>赔率: <strong>{over25_odds}</strong></li>
-        <li>预期收益: <strong>{over25_stake * (over25_odds - 1):.2f}元</strong> (如果赢)</li>
     </ul>
 </li>
 <li><strong>对冲投注</strong>: 2串1混合过关
     <ul>
         <li>第一关: 总进球复式 - {', '.join(selected_goals) if selected_goals else '无'}</li>
-        <li>第二关: {strong_team_a} vs {strong_team_b} 的 <strong>主队胜</strong> (赔率: {strong_odds})</li>
-        <li>总投注金额: <strong>{hedge_stake}元</strong></li>
-        <li>每选项金额: <strong>{stake_per_goal:.2f}元</strong></li>
-        <li><strong>对冲注仅在以下情况赢</strong>: 总进球为{', '.join(selected_goals)} <strong>且</strong> 稳胆主胜</li>
+        <li>第二关: {strong_team_a} vs {strong_team_b} 的 <strong>主队胜</strong></li>
+        <li>稳胆赔率: <strong>{strong_odds}</strong></li>
+        <li>对冲金额: <strong>${hedge_stake:.2f}</strong></li>
+        <li><strong>对冲注赢钱条件</strong>: 总进球为{', '.join(selected_goals)} <strong>且</strong> 稳胆主胜</li>
     </ul>
 </li>
 </ol>
-<p><strong>总投入本金</strong>: {over25_stake + hedge_stake}元</p>
-<p><strong>核心风险</strong>: 稳胆场次平或负时，对冲注完全失效！</p>
+<p><strong>总投入本金</strong>: ${over25_stake + hedge_stake:.2f}</p>
 </div>
 """, unsafe_allow_html=True)
 
-# --- 计算函数 ---
-def calculate_strategy2_scenarios():
-    """计算策略2的所有盈亏情景（包含稳胆结果）"""
+# --- 核心计算函数 ---
+def calculate_all_scenarios():
+    """计算所有可能情景的盈亏"""
     scenarios = []
     
     # 总投入
     total_investment = over25_stake + hedge_stake
     
-    # 所有可能的总进球结果
+    # 每个对冲选项的金额分配
+    if selected_goals:
+        stake_per_goal = hedge_stake / len(selected_goals)
+    else:
+        stake_per_goal = 0
+    
+    # 总进球所有可能结果
     goal_outcomes = ["0球", "1球", "2球", "3+球"]
     
-    # 所有可能的稳胆结果
+    # 稳胆所有可能结果
     strong_outcomes = ["主胜", "平局", "客胜"]
     
-    # 计算每个总进球选项的2串1赔率
-    combo_odds = {}
-    for goal in selected_goals:
-        if goal in goal_odds:
-            combo_odds[goal] = goal_odds[goal] * strong_odds
-    
     # 生成所有组合（12种情景）
-    for goals in goal_outcomes:
+    scenario_count = 0
+    for goal in goal_outcomes:
         for strong in strong_outcomes:
+            scenario_count += 1
+            
+            # 初始化收入
             income = 0
             
             # 1. 主投注收入（仅当总进球为3+球时）
-            if goals == "3+球":
+            if goal == "3+球":
                 income += over25_stake * over25_odds
             
             # 2. 对冲注收入（仅当稳胆主胜且总进球在选中选项中）
-            if strong == "主胜" and goals in selected_goals and goals in combo_odds:
-                income += stake_per_goal * combo_odds[goals]
+            if strong == "主胜" and goal in selected_goals:
+                # 计算2串1赔率
+                goal_odd = goals_options[goal]["odds"]
+                combo_odds = goal_odd * strong_odds
+                income += stake_per_goal * combo_odds
             
             # 计算净盈亏
             net_profit = income - total_investment
@@ -217,118 +196,107 @@ def calculate_strategy2_scenarios():
                 status = "亏损"
                 status_class = "negative"
             
-            # 计算收益率
-            roi = (net_profit / total_investment) * 100 if total_investment > 0 else 0
-            
             # 情景描述
-            scenario_desc = ""
-            if goals == "3+球" and strong == "主胜":
-                scenario_desc = "大球 + 稳胆胜"
-            elif goals == "3+球" and strong != "主胜":
-                scenario_desc = "大球 + 稳胆败"
-            elif goals in selected_goals and strong == "主胜":
-                scenario_desc = "对冲成功"
-            elif goals in selected_goals and strong != "主胜":
-                scenario_desc = "对冲失败（稳胆败）"
-            elif goals == "0球":
-                scenario_desc = "对冲未覆盖"
+            if goal == "3+球":
+                if strong == "主胜":
+                    description = "大球 + 稳胆胜"
+                else:
+                    description = "大球 + 稳胆败"
+            elif goal == "0球":
+                description = "对冲未覆盖"
+            elif goal in selected_goals:
+                if strong == "主胜":
+                    description = "对冲成功"
+                else:
+                    description = "对冲失效"
             else:
-                scenario_desc = "其他"
+                description = "其他"
             
             scenarios.append({
-                "情景编号": len(scenarios) + 1,
-                "总进球": goals,
+                "序号": scenario_count,
+                "总进球": goal,
                 "稳胆结果": strong,
-                "情景描述": scenario_desc,
-                "主投注结果": "赢" if goals == "3+球" else "输",
-                "对冲注结果": "赢" if (strong == "主胜" and goals in selected_goals) else "输",
+                "描述": description,
+                "主注结果": "赢" if goal == "3+球" else "输",
+                "对冲注结果": "赢" if (strong == "主胜" and goal in selected_goals) else "输",
                 "总收入": round(income, 2),
                 "总投入": round(total_investment, 2),
                 "净盈亏": round(net_profit, 2),
-                "收益率": f"{roi:.1f}%",
-                "状态": status,
-                "状态分类": status_class,
-                "组合标签": f"{goals} | {strong}"
+                "收益率": f"{(net_profit/total_investment*100):.1f}%" if total_investment > 0 else "0%",
+                "状态": status
             })
     
     return pd.DataFrame(scenarios)
 
-# --- 生成盈亏数据 ---
-df_scenarios = calculate_strategy2_scenarios()
+# --- 生成数据 ---
+df_scenarios = calculate_all_scenarios()
 
 # --- 关键指标 ---
-st.header("📊 关键策略指标")
+st.header("📊 关键指标")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric("总投入本金", f"{over25_stake + hedge_stake}元")
+    st.metric("总投入", f"${over25_stake + hedge_stake:.2f}")
 
 with col2:
     max_profit = df_scenarios["净盈亏"].max()
-    st.metric("最大可能盈利", f"{max_profit:.2f}元")
+    st.metric("最大盈利", f"${max_profit:.2f}")
 
 with col3:
     min_profit = df_scenarios["净盈亏"].min()
-    st.metric("最大可能亏损", f"{min_profit:.2f}元")
+    st.metric("最大亏损", f"${min_profit:.2f}")
 
 with col4:
-    profitable_scenarios = len(df_scenarios[df_scenarios["净盈亏"] > 0])
+    losing_scenarios = len(df_scenarios[df_scenarios["净盈亏"] < 0])
     total_scenarios = len(df_scenarios)
-    st.metric("盈利情景数", f"{profitable_scenarios}/{total_scenarios}")
+    st.metric("亏损概率", f"{(losing_scenarios/total_scenarios*100):.1f}%")
 
 # --- 盈亏图表 ---
-st.header("📈 盈亏分布可视化")
+st.header("📈 盈亏分布图")
 
-# 创建分组柱状图
+# 准备数据
+df_chart = df_scenarios.copy()
+df_chart["组合标签"] = df_chart["总进球"] + " | " + df_chart["稳胆结果"]
+
+# 创建条形图
 fig = go.Figure()
 
-# 为每种总进球结果分配颜色
+# 按总进球分类颜色
 colors = {
-    "0球": "#FF6B6B",  # 红色 - 高风险（对冲未覆盖）
+    "0球": "#FF6B6B",  # 红色 - 高风险
     "1球": "#4ECDC4",  # 青色
     "2球": "#45B7D1",  # 蓝色
-    "3+球": "#96CEB4"  # 绿色 - 主投注赢
+    "3+球": "#96CEB4"   # 绿色
 }
 
-# 按总进球分组显示
-goal_outcomes = df_scenarios["总进球"].unique()
-
-for goal in goal_outcomes:
-    subset = df_scenarios[df_scenarios["总进球"] == goal]
-    
-    # 为每个柱状图添加文本标签
-    text_labels = []
-    for _, row in subset.iterrows():
-        label = f"{row['净盈亏']:.0f}元"
-        text_labels.append(label)
+# 为每种总进球添加条形
+for goal in df_chart["总进球"].unique():
+    subset = df_chart[df_chart["总进球"] == goal]
     
     fig.add_trace(go.Bar(
-        x=subset["稳胆结果"],
+        x=subset["组合标签"],
         y=subset["净盈亏"],
         name=goal,
         marker_color=colors.get(goal, "#CCCCCC"),
-        text=text_labels,
+        text=[f"${x:.0f}" for x in subset["净盈亏"]],
         textposition='outside',
         hovertemplate=(
             "<b>%{x}</b><br>" +
-            "总进球: %{customdata[0]}<br>" +
-            "稳胆结果: %{x}<br>" +
-            "净盈亏: %{y:.2f}元<br>" +
-            "状态: %{customdata[1]}<br>" +
+            "净盈亏: $%{y:.2f}<br>" +
+            "状态: %{customdata}<br>" +
             "<extra></extra>"
         ),
-        customdata=list(zip(subset["总进球"], subset["状态"]))
+        customdata=subset["状态"]
     ))
 
 # 更新布局
 fig.update_layout(
-    title=f"策略2盈亏分析 - 共{len(df_scenarios)}种情景",
-    xaxis_title="稳胆比赛结果",
-    yaxis_title="净盈亏 (元)",
-    barmode='group',
+    title=f"所有情景盈亏分析 (共{len(df_scenarios)}种组合)",
+    xaxis_title="情景 (总进球 | 稳胆结果)",
+    yaxis_title="净盈亏 ($)",
     showlegend=True,
     height=500,
-    hovermode="closest"
+    xaxis_tickangle=-45
 )
 
 # 添加零线
@@ -336,160 +304,155 @@ fig.add_hline(y=0, line_dash="dash", line_color="black", opacity=0.5)
 
 st.plotly_chart(fig, use_container_width=True)
 
-# --- 风险情景分析 ---
-st.header("⚠️ 风险情景分析")
+# --- 高风险情景分析 ---
+st.header("⚠️ 高风险情景分析")
 
 # 找出高风险情景（双重损失）
-high_risk_scenarios = df_scenarios[
+high_risk = df_scenarios[
     (df_scenarios["稳胆结果"] != "主胜") & 
     (df_scenarios["总进球"].isin(["0球", "1球", "2球"]))
-].copy()
+]
 
-if not high_risk_scenarios.empty:
+if not high_risk.empty:
     st.markdown("""
     <div class="warning-box">
-    <h4>⚠️ 高风险情景识别：双重损失</h4>
-    <p>以下情景会导致您的策略出现<strong>双重损失</strong>（主投注+对冲注同时输）：</p>
+    <h4>双重损失风险</h4>
+    <p>以下情景会导致<strong>主投注和对冲注同时输掉</strong>：</p>
     <ul>
-    <li><strong>稳胆场次平或负</strong> + <strong>主比赛总进球为0、1或2球</strong></li>
+    <li><strong>稳胆场次平或负</strong>（对冲注失效）</li>
+    <li><strong>主比赛总进球为0、1或2球</strong>（主注输）</li>
     </ul>
-    <p>在这些情景下，您的对冲注因稳胆未胜而失效，同时主投注因未打出大球也输掉。</p>
+    <p>在这些情景下，您将损失全部 ${:.2f} 本金。</p>
     </div>
-    """, unsafe_allow_html=True)
+    """.format(over25_stake + hedge_stake), unsafe_allow_html=True)
     
     st.write("**双重损失情景详情:**")
-    risk_display = high_risk_scenarios[["总进球", "稳胆结果", "净盈亏", "情景描述"]].copy()
-    risk_display["损失金额"] = risk_display["净盈亏"].apply(lambda x: f"{abs(x):.0f}元")
-    risk_display = risk_display[["总进球", "稳胆结果", "情景描述", "损失金额"]]
+    
+    risk_display = high_risk[["总进球", "稳胆结果", "净盈亏", "描述"]].copy()
+    risk_display["损失金额"] = risk_display["净盈亏"].apply(lambda x: f"${abs(x):.2f}")
     
     st.dataframe(
-        risk_display.style.apply(
-            lambda x: ['background-color: #FFE5E5' for _ in x],
-            axis=1
-        ),
+        risk_display[["总进球", "稳胆结果", "描述", "损失金额"]],
         use_container_width=True
     )
     
     # 风险统计
-    total_high_risk = len(high_risk_scenarios)
-    risk_percentage = (total_high_risk / len(df_scenarios)) * 100
+    total_high_risk = len(high_risk)
+    total_scenarios = len(df_scenarios)
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         st.metric("双重损失情景数", f"{total_high_risk}个")
     with col2:
-        st.metric("双重损失概率", f"{risk_percentage:.1f}%")
-    with col3:
-        max_loss = high_risk_scenarios["净盈亏"].min()
-        st.metric("最大损失金额", f"{abs(max_loss):.0f}元")
+        st.metric("双重损失概率", f"{(total_high_risk/total_scenarios*100):.1f}%")
 
 # --- 详细盈亏表 ---
-st.header("📋 详细盈亏分析表")
-st.write(f"**共 {len(df_scenarios)} 种可能情景:**")
+st.header("📋 详细盈亏表")
+st.write(f"**所有 {len(df_scenarios)} 种可能情景:**")
 
 # 格式化显示
 display_df = df_scenarios.copy()
 display_df = display_df.sort_values(["总进球", "稳胆结果"])
 
-# 应用样式函数
-def highlight_row(row):
-    """根据状态高亮显示行"""
-    if row['状态'] == "盈利":
-        return ['background-color: #d4edda; color: #155724;'] * len(row)
-    elif row['状态'] == "亏损":
-        if row['稳胆结果'] != "主胜" and row['总进球'] in ["0球", "1球", "2球"]:
-            return ['background-color: #f8d7da; color: #721c24; font-weight: bold;'] * len(row)
-        else:
-            return ['background-color: #f8d7da; color: #721c24;'] * len(row)
+# 应用样式
+def color_status(val):
+    if val == "盈利":
+        return 'background-color: #d4edda; color: #155724;'
+    elif val == "亏损":
+        return 'background-color: #f8d7da; color: #721c24;'
     else:
-        return ['background-color: #fff3cd; color: #856404;'] * len(row)
+        return 'background-color: #fff3cd; color: #856404;'
 
-# 选择要显示的列
-display_columns = ["情景编号", "总进球", "稳胆结果", "情景描述", "净盈亏", "收益率", "状态"]
-display_df = display_df[display_columns]
+# 创建HTML表格
+html_table = """
+<table border="1" style="width:100%; border-collapse: collapse;">
+    <thead>
+        <tr style="background-color: #f8f9fa;">
+            <th style="padding: 8px;">序号</th>
+            <th style="padding: 8px;">总进球</th>
+            <th style="padding: 8px;">稳胆结果</th>
+            <th style="padding: 8px;">描述</th>
+            <th style="padding: 8px;">净盈亏 ($)</th>
+            <th style="padding: 8px;">状态</th>
+        </tr>
+    </thead>
+    <tbody>
+"""
 
-# 创建样式
-styled_df = display_df.style.apply(highlight_row, axis=1)
+for _, row in display_df.iterrows():
+    if row["状态"] == "盈利":
+        row_color = "#d4edda"
+        text_color = "#155724"
+    elif row["状态"] == "亏损":
+        row_color = "#f8d7da"
+        text_color = "#721c24"
+    else:
+        row_color = "#fff3cd"
+        text_color = "#856404"
+    
+    html_table += f"""
+        <tr style="background-color: {row_color}; color: {text_color};">
+            <td style="padding: 8px; font-weight: bold;">{row['序号']}</td>
+            <td style="padding: 8px;">{row['总进球']}</td>
+            <td style="padding: 8px;">{row['稳胆结果']}</td>
+            <td style="padding: 8px;">{row['描述']}</td>
+            <td style="padding: 8px; font-weight: bold;">{row['净盈亏']:+.2f}</td>
+            <td style="padding: 8px; font-weight: bold;">{row['状态']}</td>
+        </tr>
+    """
 
-# 显示表格
-st.dataframe(
-    styled_df.format({
-        '净盈亏': '{:.2f}元'
-    }),
-    use_container_width=True,
-    height=500
-)
+html_table += """
+    </tbody>
+</table>
+"""
 
-# --- 策略评估 ---
-st.header("💡 策略评估")
+st.markdown(html_table, unsafe_allow_html=True)
 
-# 计算统计
-profitable_scenarios = len(df_scenarios[df_scenarios["净盈亏"] > 0])
-break_even_scenarios = len(df_scenarios[df_scenarios["净盈亏"] == 0])
-losing_scenarios = len(df_scenarios[df_scenarios["净盈亏"] < 0])
+# --- 策略总结 ---
+st.header("💡 策略总结")
 
-total_scenarios = len(df_scenarios)
-profitable_rate = (profitable_scenarios / total_scenarios) * 100
-losing_rate = (losing_scenarios / total_scenarios) * 100
+# 统计
+profitable = len(df_scenarios[df_scenarios["净盈亏"] > 0])
+break_even = len(df_scenarios[df_scenarios["净盈亏"] == 0])
+losing = len(df_scenarios[df_scenarios["净盈亏"] < 0])
 
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown(f"""
-    <div class="metric-card">
-    <h5>盈利情景</h5>
-    <h3 class="positive">{profitable_scenarios}个</h3>
-    <p>{profitable_rate:.1f}% 的概率</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col2:
-    st.markdown(f"""
-    <div class="metric-card">
-    <h5>保本情景</h5>
-    <h3 class="neutral">{break_even_scenarios}个</h3>
-    <p>{(break_even_scenarios/total_scenarios*100):.1f}% 的概率</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col3:
-    st.markdown(f"""
-    <div class="metric-card">
-    <h5>亏损情景</h5>
-    <h3 class="negative">{losing_scenarios}个</h3>
-    <p>{losing_rate:.1f}% 的概率</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-# 策略建议
-st.markdown("""
+st.markdown(f"""
 <div class="strategy-box">
-<h4>策略评估与建议</h4>
+<h4>策略统计分析</h4>
+<table style="width:100%;">
+    <tr>
+        <td><strong>盈利情景:</strong></td>
+        <td class="positive">{profitable} 个 ({(profitable/len(df_scenarios)*100):.1f}%)</td>
+    </tr>
+    <tr>
+        <td><strong>保本情景:</strong></td>
+        <td>{break_even} 个 ({(break_even/len(df_scenarios)*100):.1f}%)</td>
+    </tr>
+    <tr>
+        <td><strong>亏损情景:</strong></td>
+        <td class="negative">{losing} 个 ({(losing/len(df_scenarios)*100):.1f}%)</td>
+    </tr>
+    <tr>
+        <td><strong>总情景数:</strong></td>
+        <td>{len(df_scenarios)} 个 (100%)</td>
+    </tr>
+</table>
 
-<h5>✅ 策略优点：</h5>
+<h5>策略评估：</h5>
 <ol>
-<li><strong>对冲保护</strong>：当总进球为选中的1球或2球且稳胆主胜时，对冲注能弥补主注损失</li>
-<li><strong>高赔率机会</strong>：2串1组合提供较高赔率，有机会获得超额回报</li>
-<li><strong>风险分散</strong>：不完全依赖单一比赛结果</li>
+<li><strong>成功条件</strong>: 对冲注仅在"总进球1/2球 + 稳胆主胜"时赢</li>
+<li><strong>主要风险</strong>: 稳胆平/负时对冲失效</li>
+<li><strong>最大风险</strong>: 稳胆败 + 主赛小球 = 双重损失</li>
+<li><strong>对冲漏洞</strong>: 未覆盖0球情况</li>
 </ol>
 
-<h5>⚠️ 策略风险：</h5>
+<h5>关键建议：</h5>
 <ol>
-<li><strong>稳胆依赖</strong>：策略成败完全取决于稳胆场次结果</li>
-<li><strong>双重损失风险</strong>：稳胆爆冷 + 主赛小球 = 最大亏损</li>
-<li><strong>覆盖不全</strong>：未选中的总进球选项无保护（特别是0球）</li>
-<li><strong>资金效率低</strong>：需要额外资金进行对冲</li>
+<li><strong>稳胆可靠性是关键</strong>: 仔细评估稳胆场次爆冷概率</li>
+<li><strong>考虑覆盖0球</strong>: 如果预算允许，加入0球选项</li>
+<li><strong>调整资金比例</strong>: 根据稳胆信心调整主注/对冲比例</li>
+<li><strong>接受风险</strong>: 必须接受稳胆可能爆冷的现实</li>
 </ol>
-
-<h5>📋 改进建议：</h5>
-<ol>
-<li><strong>严格评估稳胆</strong>：仔细分析稳胆场次的球队实力、战意、伤停等情况</li>
-<li><strong>考虑覆盖0球</strong>：如果预算允许，考虑加入0球选项</li>
-<li><strong>调整资金分配</strong>：根据对稳胆的信心调整主注与对冲注的比例</li>
-<li><strong>设置止损点</strong>：明确最大可接受亏损，严格执行</li>
-</ol>
-
-<p><strong>核心结论</strong>：此策略是否成功，<strong>完全取决于您对稳胆场次的判断准确性</strong>。</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -505,7 +468,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- 脚注 ---
 st.caption("""
-*胜算实验室 v3.0 | 策略2：总进球+稳胆对冲分析 | 仅供学习风控概念使用*
+*胜算实验室 | 策略2分析工具 | 仅供学习风控概念使用*
 """)
