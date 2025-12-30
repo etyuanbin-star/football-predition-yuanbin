@@ -3,12 +3,62 @@ import pandas as pd
 import numpy as np
 import random
 
-# 页面配置
+# 页面配置 - 使用缓存优化
 st.set_page_config(
-    page_title="胜算实验室：足球投注风控教育系统",
+    page_title="胜算实验室：足球投注风控系统",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# --- 缓存优化函数 ---
+@st.cache_data(ttl=300)  # 缓存5分钟
+def calculate_results(active_bets, outcomes, total_cost):
+    """缓存计算结果"""
+    results = []
+    for outcome in outcomes:
+        income = 0
+        for bet in active_bets:
+            if bet["item"] == outcome:
+                income += bet["stake"] * bet["odd"]
+        
+        net_profit = income - total_cost
+        
+        results.append({
+            "模拟赛果": outcome,
+            "总收入": round(income, 2),
+            "总投入": round(total_cost, 2),
+            "净盈亏": round(net_profit, 2),
+            "状态": "盈利" if net_profit > 0 else ("保本" if net_profit == 0 else "亏损")
+        })
+    return results
+
+@st.cache_data(ttl=300)
+def simulate_paths(ev, n_simulations, n_bets, starting_bankroll):
+    """缓存模拟结果"""
+    simulation_data = []
+    
+    for sim in range(min(n_simulations, 50)):  # 限制最多50条路径
+        bankroll = starting_bankroll
+        path = []
+        
+        for bet in range(min(n_bets, 200)):  # 限制最多200次投注
+            # 简化模拟逻辑
+            bankroll += ev * random.uniform(0.8, 1.2)
+            if bankroll <= 0:
+                bankroll = 0
+                break
+            path.append(max(0, bankroll))
+        
+        # 只记录关键点，减少数据量
+        for i, value in enumerate(path):
+            if i % 10 == 0 or i == len(path) - 1:  # 每10次记录一次
+                simulation_data.append({
+                    "模拟路径": sim + 1,
+                    "投注次数": i + 1,
+                    "资金余额": value
+                })
+    
+    return simulation_data
 
 # --- 样式 ---
 st.markdown("""
@@ -35,6 +85,10 @@ st.markdown("""
     .negative {
         color: #dc3545;
         font-weight: bold;
+    }
+    /* 优化表格样式 */
+    .dataframe {
+        font-size: 0.9em;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -69,8 +123,14 @@ with st.sidebar:
     # 模拟设置
     show_simulation = st.checkbox("启用长期模拟", value=False)
     if show_simulation:
-        sim_runs = st.slider("模拟次数", 100, 5000, 1000)
+        sim_runs = st.slider("模拟次数", 100, 2000, 500)  # 减少最大模拟次数
         initial_bankroll = st.number_input("初始资金 ($)", value=1000.0, min_value=100.0)
+        
+    # 性能选项
+    st.divider()
+    st.subheader("⚡ 性能选项")
+    use_simple_charts = st.checkbox("使用简化图表", value=True, 
+                                    help="简化图表显示以加快渲染速度")
 
 # --- 风险警示 ---
 st.markdown("""
@@ -97,10 +157,15 @@ if mode == "策略 1：比分精准对冲":
         
         st.write("设置比分对冲项")
         
+        # 使用会话状态存储复选框状态，避免重复渲染
+        if 'checkbox_states' not in st.session_state:
+            st.session_state.checkbox_states = {s: (s in ["1-0", "0-1", "1-1"]) for s in scores}
+        
         for s in scores:
             col1, col2, col3 = st.columns([1, 1.5, 1.5])
             with col1:
-                is_on = st.checkbox(s, key=f"s1_{s}", value=(s in ["1-0", "0-1", "1-1"]))
+                is_on = st.checkbox(s, key=f"s1_{s}", value=st.session_state.checkbox_states[s])
+                st.session_state.checkbox_states[s] = is_on
             with col2:
                 s_amt = st.number_input(f"金额", value=15.0 if s in ["1-0", "0-1", "1-1"] else 10.0, 
                                        key=f"s1_am_{s}", label_visibility="collapsed") if is_on else 0.0
@@ -123,58 +188,44 @@ if mode == "策略 1：比分精准对冲":
         
         # 7种可能结果
         outcomes = ["0-0", "1-0", "0-1", "1-1", "2-0", "0-2", "3球+"]
-        results = []
         
-        for outcome in outcomes:
-            income = 0
-            for bet in active_bets:
-                if bet["item"] == outcome:
-                    income += bet["stake"] * bet["odd"]
-            
-            net_profit = income - total_cost
-            
-            results.append({
-                "模拟赛果": outcome,
-                "总收入": round(income, 2),
-                "总投入": round(total_cost, 2),
-                "净盈亏": round(net_profit, 2),
-                "状态": "盈利" if net_profit > 0 else ("保本" if net_profit == 0 else "亏损")
-            })
+        # 使用缓存函数计算结果
+        results = calculate_results(active_bets, outcomes, total_cost)
         
         df_results = pd.DataFrame(results)
         
-        # 使用 Streamlit 内置条形图
-        st.write("##### 盈亏条形图")
-        chart_data = df_results.set_index("模拟赛果")["净盈亏"]
-        st.bar_chart(chart_data)
+        # 图表显示
+        if use_simple_charts:
+            st.write("##### 盈亏条形图（简化）")
+            # 简化图表数据
+            chart_df = df_results[["模拟赛果", "净盈亏"]].set_index("模拟赛果")
+            st.bar_chart(chart_df)
+        else:
+            # 更详细的图表显示
+            st.write("##### 盈亏分析")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("最大盈利", f"${df_results['净盈亏'].max():.0f}")
+            with col2:
+                st.metric("最大亏损", f"${df_results['净盈亏'].min():.0f}")
         
-        # 详细数据表
+        # 详细数据表 - 只显示关键列
         st.write("##### 详细盈亏表")
         
-        # 自定义显示带颜色的表格
-        def color_profit(val):
-            if val > 0:
-                return 'background-color: #d4edda; color: #155724;'
-            elif val < 0:
-                return 'background-color: #f8d7da; color: #721c24;'
-            else:
-                return 'background-color: #fff3cd; color: #856404;'
+        # 简化表格显示
+        display_df = df_results[["模拟赛果", "净盈亏", "状态"]].copy()
+        display_df["净盈亏"] = display_df["净盈亏"].apply(lambda x: f"${x:+.2f}")
         
-        # 显示表格
-        styled_df = df_results.style.applymap(color_profit, subset=['净盈亏'])
-        st.dataframe(styled_df, hide_index=True, use_container_width=True)
+        # 使用st.dataframe而不是st.table，性能更好
+        st.dataframe(display_df, hide_index=True, use_container_width=True, height=300)
         
-        # 总结统计
+        # 快速统计
         profitable = sum(1 for r in results if r['净盈亏'] > 0)
-        breakeven = sum(1 for r in results if r['净盈亏'] == 0)
-        losing = sum(1 for r in results if r['净盈亏'] < 0)
-        
         st.info(f"""
-        **策略分析总结：**
+        **快速分析：**
         - 覆盖赛果: {len(outcomes)} 种
-        - 盈利赛果: {profitable} 种 ({profitable/len(outcomes)*100:.1f}%)
-        - 保本赛果: {breakeven} 种
-        - 亏损赛果: {losing} 种 ({losing/len(outcomes)*100:.1f}%)
+        - 盈利赛果: {profitable} 种
+        - 保本率: {profitable/len(outcomes)*100:.1f}%
         """)
 
 else:  # 策略 2：总进球复式对冲
@@ -226,46 +277,30 @@ else:  # 策略 2：总进球复式对冲
         
         # 4种可能结果
         outcomes = ["0球", "1球", "2球", "3球+"]
-        results = []
         
-        for outcome in outcomes:
-            income = 0
-            for bet in active_bets:
-                if bet["item"] == outcome:
-                    income += bet["stake"] * bet["odd"]
-            
-            net_profit = income - total_cost
-            
-            results.append({
-                "模拟赛果": outcome,
-                "总收入": round(income, 2),
-                "总投入": round(total_cost, 2),
-                "净盈亏": round(net_profit, 2),
-                "状态": "盈利" if net_profit > 0 else ("保本" if net_profit == 0 else "亏损")
-            })
+        # 使用缓存函数计算结果
+        results = calculate_results(active_bets, outcomes, total_cost)
         
         df_results = pd.DataFrame(results)
         
-        # 使用 Streamlit 内置条形图
-        st.write("##### 盈亏条形图")
-        chart_data = df_results.set_index("模拟赛果")["净盈亏"]
-        st.bar_chart(chart_data)
+        # 图表显示
+        if use_simple_charts:
+            st.write("##### 盈亏条形图（简化）")
+            chart_df = df_results[["模拟赛果", "净盈亏"]].set_index("模拟赛果")
+            st.bar_chart(chart_df)
+        else:
+            st.write("##### 盈亏分析")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("最大盈利", f"${df_results['净盈亏'].max():.0f}")
+            with col2:
+                st.metric("最大亏损", f"${df_results['净盈亏'].min():.0f}")
         
         # 详细数据表
         st.write("##### 详细盈亏表")
-        
-        # 自定义显示带颜色的表格
-        def color_profit(val):
-            if val > 0:
-                return 'background-color: #d4edda; color: #155724;'
-            elif val < 0:
-                return 'background-color: #f8d7da; color: #721c24;'
-            else:
-                return 'background-color: #fff3cd; color: #856404;'
-        
-        # 显示表格
-        styled_df = df_results.style.applymap(color_profit, subset=['净盈亏'])
-        st.dataframe(styled_df, hide_index=True, use_container_width=True)
+        display_df = df_results[["模拟赛果", "净盈亏", "状态"]].copy()
+        display_df["净盈亏"] = display_df["净盈亏"].apply(lambda x: f"${x:+.2f}")
+        st.dataframe(display_df, hide_index=True, use_container_width=True, height=200)
 
 # --- 数学期望计算 ---
 st.divider()
@@ -275,30 +310,23 @@ st.header("📉 数学期望分析")
 if mode == "策略 1：比分精准对冲":
     prob_3plus = pred_prob
     prob_each_other = (1 - pred_prob) / 6 if len(active_bets) > 1 else 0
-    
-    ev = 0
-    for result in results:
-        if result["模拟赛果"] == "3球+":
-            ev += result["净盈亏"] * prob_3plus
-        else:
-            ev += result["净盈亏"] * prob_each_other
 else:
     prob_3plus = pred_prob
     prob_each_other = (1 - pred_prob) / 3 if len(active_bets) > 1 else 0
-    
-    ev = 0
-    for result in results:
-        if result["模拟赛果"] == "3球+":
-            ev += result["净盈亏"] * prob_3plus
-        else:
-            ev += result["净盈亏"] * prob_each_other
+
+ev = 0
+for result in results:
+    if result["模拟赛果"] == "3球+":
+        ev += result["净盈亏"] * prob_3plus
+    else:
+        ev += result["净盈亏"] * prob_each_other
 
 # 显示EV分析
 col1, col2 = st.columns(2)
 with col1:
-    st.metric("策略期望值 (EV)", f"${ev:.2f}", 
-              delta="正向" if ev > 0 else "负向",
-              delta_color="normal" if ev <= 0 else "inverse")
+    ev_color = "normal" if ev <= 0 else "inverse"
+    ev_delta = "正向" if ev > 0 else "负向"
+    st.metric("策略期望值 (EV)", f"${ev:.2f}", delta=ev_delta, delta_color=ev_color)
 
 with col2:
     # 简单大球投注EV
@@ -319,15 +347,135 @@ st.header("🏢 庄家数学优势")
 implied_prob = 1 / o25_odds
 overround = (1/implied_prob - 1) * 100
 
-st.markdown(f"""
-**赔率分析：**
-- 大球赔率: {o25_odds:.2f}
-- 赔率隐含概率: {implied_prob*100:.1f}%
-- 庄家优势 (Overround): {overround:.2f}%
+# 使用列布局减少垂直空间
+col1, col2 = st.columns(2)
+with col1:
+    st.markdown(f"""
+    **赔率分析：**
+    - 大球赔率: {o25_odds:.2f}
+    - 隐含概率: {implied_prob*100:.1f}%
+    - 庄家优势: {overround:.2f}%
+    """)
 
-**你的预测 vs 市场：**
-- 你的预测概率: {pred_prob*100:.1f}%
-- 市场隐含概率: {implied_prob*100:.1f}%
-- 概率差值: {(pred_prob - implied_prob)*100:+.1f}%
+with col2:
+    st.markdown(f"""
+    **预测对比：**
+    - 你的预测: {pred_prob*100:.1f}%
+    - 市场概率: {implied_prob*100:.1f}%
+    - 差值: {(pred_prob - implied_prob)*100:+.1f}%
+    """)
 
-**数学原理：**
+# --- 长期模拟（优化版）---
+if show_simulation:
+    st.divider()
+    st.header("📈 长期资金曲线模拟")
+    
+    # 添加进度指示器
+    with st.spinner('正在模拟中...'):
+        # 使用缓存函数进行模拟
+        simulation_data = simulate_paths(ev, 30, sim_runs, initial_bankroll)  # 限制30条路径
+        
+        if simulation_data:
+            sim_df = pd.DataFrame(simulation_data)
+            
+            # 快速统计
+            final_balances = sim_df.groupby("模拟路径")["资金余额"].last()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                avg_balance = final_balances.mean()
+                st.metric("平均最终资金", f"${avg_balance:.0f}")
+            
+            with col2:
+                bankruptcy_count = sum(1 for b in final_balances if b <= 0)
+                bankruptcy_rate = bankruptcy_count / len(final_balances) * 100
+                st.metric("破产概率", f"{bankruptcy_rate:.1f}%")
+            
+            with col3:
+                profitable_count = sum(1 for b in final_balances if b > initial_bankroll)
+                profitable_rate = profitable_count / len(final_balances) * 100
+                st.metric("盈利路径比例", f"{profitable_rate:.1f}%")
+            
+            # 简化图表显示
+            st.write("##### 资金曲线示例（前5条路径）")
+            
+            # 选择前5条路径显示
+            top_paths = sim_df[sim_df["模拟路径"] <= 5]
+            if not top_paths.empty:
+                # 创建透视表用于图表
+                pivot_df = top_paths.pivot(index="投注次数", columns="模拟路径", values="资金余额")
+                st.line_chart(pivot_df)
+            
+            # 简化分布显示
+            st.write("##### 最终资金分布")
+            
+            # 计算分布
+            bins = [0, initial_bankroll/2, initial_bankroll, initial_bankroll*1.5, float('inf')]
+            labels = ["严重亏损", "中度亏损", "轻微亏损/盈利", "大幅盈利"]
+            
+            final_balances_list = list(final_balances)
+            distribution = pd.cut(final_balances_list, bins=bins, labels=labels).value_counts().sort_index()
+            
+            dist_df = pd.DataFrame({
+                "资金状态": distribution.index,
+                "路径数量": distribution.values
+            }).set_index("资金状态")
+            
+            st.bar_chart(dist_df)
+
+# --- 健康建议（简化版）---
+st.divider()
+st.header("💡 健康投注建议")
+
+# 使用展开器减少初始显示内容
+with st.expander("查看健康投注原则", expanded=False):
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        ### ✅ 健康原则
+        
+        1. **预算控制**
+        - 月投注预算 ≤ 娱乐预算的10%
+        - 单场投注 ≤ 总预算的5%
+        - 永不借贷投注
+        """)
+    
+    with col2:
+        st.markdown("""
+        ### ⚠️ 必须避免
+        
+        1. **追注行为**
+        - "已经输这么多，必须追回来"
+        - 情绪化决策
+        - 忽视资金管理
+        """)
+
+# --- 最终警示 ---
+st.divider()
+st.markdown("""
+<div style='text-align: center; padding: 1rem; background-color: #f8d7da; border-radius: 10px;'>
+<h4 style='color: #721c24;'>⚠️ 重要提醒</h4>
+<p style='color: #721c24; font-size: 0.9rem;'>
+<strong>体育投注不是投资，而是娱乐消费。</strong><br>
+庄家通过数学优势确保长期盈利。<br>
+如果你或你认识的人有赌博问题，请寻求专业帮助。
+</p>
+</div>
+""", unsafe_allow_html=True)
+
+# --- 性能提示 ---
+if st.checkbox("显示性能提示", value=False):
+    st.info("""
+    **性能优化提示：**
+    1. 使用"简化图表"选项减少渲染时间
+    2. 减少模拟次数到500-1000次
+    3. 避免频繁切换策略和参数
+    4. 如仍然缓慢，请刷新页面重新开始
+    """)
+
+# --- 脚注 ---
+st.caption("""
+*本工具仅用于教育目的，展示赌博的数学原理和风险。不鼓励任何形式的赌博行为。*  
+*所有计算基于概率理论，实际结果可能因多种因素而异。*
+""")
