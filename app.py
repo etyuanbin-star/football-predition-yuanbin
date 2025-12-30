@@ -1,9 +1,9 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import random
+import plotly.graph_objects as go
+import plotly.express as px
 
 # 页面配置
 st.set_page_config(
@@ -11,9 +11,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# 导入自定义模块（如果拆分的话）
-# 这里我们先写一个完整但更简洁的版本
 
 # --- 样式 ---
 st.markdown("""
@@ -32,6 +29,14 @@ st.markdown("""
         border-radius: 10px;
         padding: 1rem;
         margin: 1rem 0;
+    }
+    .positive {
+        color: #28a745;
+        font-weight: bold;
+    }
+    .negative {
+        color: #dc3545;
+        font-weight: bold;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -60,13 +65,6 @@ with st.sidebar:
     # 风险参数
     st.subheader("🧠 风险参数")
     pred_prob = st.slider("预测大球概率 (%)", 10, 90, 45) / 100
-    
-    st.divider()
-    
-    # 模拟设置
-    if st.checkbox("启用长期模拟"):
-        sim_runs = st.slider("模拟次数", 100, 5000, 1000)
-        initial_bankroll = st.number_input("初始资金 ($)", value=1000.0, min_value=100.0)
 
 # --- 风险警示 ---
 st.markdown("""
@@ -139,28 +137,48 @@ if mode == "策略 1：比分精准对冲":
         
         df_results = pd.DataFrame(results)
         
-        # 可视化
-        fig, ax = plt.subplots(figsize=(10, 5))
+        # 使用 Plotly 创建交互式图表
+        fig = go.Figure()
+        
+        # 添加条形图
         colors = ['#dc3545' if x < 0 else '#28a745' for x in df_results['净盈亏']]
-        bars = ax.bar(df_results['模拟赛果'], df_results['净盈亏'], color=colors)
-        ax.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
-        ax.set_xlabel('比赛结果')
-        ax.set_ylabel('净盈亏 ($)')
-        ax.set_title('各结果净盈亏分析')
-        ax.tick_params(axis='x', rotation=45)
         
-        # 添加数值标签
-        for bar, value in zip(bars, df_results['净盈亏']):
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height,
-                   f'${value:+.0f}', ha='center', va='bottom' if height > 0 else 'top',
-                   fontsize=9)
+        fig.add_trace(go.Bar(
+            x=df_results['模拟赛果'],
+            y=df_results['净盈亏'],
+            marker_color=colors,
+            text=df_results['净盈亏'].apply(lambda x: f'${x:+.0f}'),
+            textposition='auto',
+        ))
         
-        plt.tight_layout()
-        st.pyplot(fig)
+        # 添加零线
+        fig.add_hline(y=0, line_width=1, line_dash="dash", line_color="black")
+        
+        fig.update_layout(
+            title="各结果净盈亏分析",
+            xaxis_title="比赛结果",
+            yaxis_title="净盈亏 ($)",
+            showlegend=False,
+            height=400
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
         
         # 详细数据表
-        st.dataframe(df_results, hide_index=True, use_container_width=True)
+        st.write("##### 详细盈亏表")
+        
+        # 自定义显示带颜色的表格
+        def color_profit(val):
+            if val > 0:
+                return 'background-color: #d4edda; color: #155724;'
+            elif val < 0:
+                return 'background-color: #f8d7da; color: #721c24;'
+            else:
+                return 'background-color: #fff3cd; color: #856404;'
+        
+        # 显示表格
+        styled_df = df_results.style.applymap(color_profit, subset=['净盈亏'])
+        st.dataframe(styled_df, hide_index=True, use_container_width=True)
 
 else:  # 策略 2：总进球复式对冲
     with col_strategy:
@@ -231,27 +249,48 @@ else:  # 策略 2：总进球复式对冲
         
         df_results = pd.DataFrame(results)
         
-        # 可视化
-        fig, ax = plt.subplots(figsize=(8, 5))
+        # 使用 Plotly 创建交互式图表
+        fig = go.Figure()
+        
+        # 添加条形图
         colors = ['#dc3545' if x < 0 else '#28a745' for x in df_results['净盈亏']]
-        bars = ax.bar(df_results['模拟赛果'], df_results['净盈亏'], color=colors)
-        ax.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
-        ax.set_xlabel('比赛结果')
-        ax.set_ylabel('净盈亏 ($)')
-        ax.set_title('各结果净盈亏分析')
         
-        # 添加数值标签
-        for bar, value in zip(bars, df_results['净盈亏']):
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height,
-                   f'${value:+.0f}', ha='center', va='bottom' if height > 0 else 'top',
-                   fontsize=10)
+        fig.add_trace(go.Bar(
+            x=df_results['模拟赛果'],
+            y=df_results['净盈亏'],
+            marker_color=colors,
+            text=df_results['净盈亏'].apply(lambda x: f'${x:+.0f}'),
+            textposition='auto',
+        ))
         
-        plt.tight_layout()
-        st.pyplot(fig)
+        # 添加零线
+        fig.add_hline(y=0, line_width=1, line_dash="dash", line_color="black")
+        
+        fig.update_layout(
+            title="各结果净盈亏分析",
+            xaxis_title="比赛结果",
+            yaxis_title="净盈亏 ($)",
+            showlegend=False,
+            height=400
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
         
         # 详细数据表
-        st.dataframe(df_results, hide_index=True, use_container_width=True)
+        st.write("##### 详细盈亏表")
+        
+        # 自定义显示带颜色的表格
+        def color_profit(val):
+            if val > 0:
+                return 'background-color: #d4edda; color: #155724;'
+            elif val < 0:
+                return 'background-color: #f8d7da; color: #721c24;'
+            else:
+                return 'background-color: #fff3cd; color: #856404;'
+        
+        # 显示表格
+        styled_df = df_results.style.applymap(color_profit, subset=['净盈亏'])
+        st.dataframe(styled_df, hide_index=True, use_container_width=True)
 
 # --- 数学期望计算 ---
 st.divider()
@@ -315,144 +354,5 @@ st.markdown(f"""
 - 你的预测概率: {pred_prob*100:.1f}%
 - 市场隐含概率: {implied_prob*100:.1f}%
 - 概率差值: {(pred_prob - implied_prob)*100:+.1f}%
-""")
 
-# --- 长期模拟 ---
-if 'sim_runs' in locals() and sim_runs:
-    st.divider()
-    st.header("📈 长期资金曲线模拟")
-    
-    # 模拟参数
-    n_simulations = 50
-    n_bets = min(sim_runs, 1000)
-    starting_bankroll = initial_bankroll
-    
-    # 简化模拟
-    all_paths = []
-    
-    for sim in range(n_simulations):
-        bankroll = starting_bankroll
-        path = [bankroll]
-        
-        for bet in range(n_bets):
-            # 基于期望值模拟
-            if ev > 0:
-                bankroll += ev * random.uniform(0.5, 1.5)
-            else:
-                bankroll += ev * random.uniform(0.8, 1.2)
-            
-            if bankroll <= 0:
-                bankroll = 0
-            
-            path.append(max(0, bankroll))
-        
-        all_paths.append(path)
-    
-    # 可视化
-    fig, ax = plt.subplots(figsize=(12, 6))
-    
-    for i, path in enumerate(all_paths[:10]):  # 只显示前10条
-        alpha = 0.3
-        linewidth = 1
-        ax.plot(path, alpha=alpha, linewidth=linewidth, color='blue')
-    
-    # 平均路径
-    if all_paths:
-        avg_path = np.mean(all_paths, axis=0)
-        ax.plot(avg_path, 'r-', linewidth=2, label='平均路径', alpha=0.8)
-    
-    ax.axhline(y=starting_bankroll, color='green', linestyle='--', alpha=0.5, label='初始资金')
-    ax.axhline(y=starting_bankroll/2, color='orange', linestyle='--', alpha=0.5, label='50%亏损线')
-    ax.axhline(y=0, color='red', linestyle='-', alpha=0.3, label='破产线')
-    
-    ax.set_xlabel('投注次数')
-    ax.set_ylabel('资金余额 ($)')
-    ax.set_title(f'长期资金曲线模拟 ({n_simulations}条路径)')
-    ax.legend(loc='upper left', fontsize=8)
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    st.pyplot(fig)
-    
-    # 统计
-    if all_paths:
-        final_balances = [path[-1] for path in all_paths]
-        bankruptcy_count = sum(1 for b in final_balances if b <= 0)
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("平均最终资金", f"${np.mean(final_balances):.0f}")
-        with col2:
-            st.metric("破产概率", f"{bankruptcy_count/n_simulations*100:.1f}%")
-        with col3:
-            profitable_rate = sum(1 for b in final_balances if b > starting_bankroll) / n_simulations * 100
-            st.metric("盈利路径比例", f"{profitable_rate:.1f}%")
-
-# --- 健康建议 ---
-st.divider()
-st.header("💡 健康投注建议")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("""
-    ### ✅ 健康原则
-    
-    1. **预算控制**
-    - 月投注预算 ≤ 娱乐预算的10%
-    - 单场投注 ≤ 总预算的5%
-    - 永不借贷投注
-    
-    2. **记录分析**
-    - 记录每笔投注
-    - 每月复盘决策
-    - 设置止损止盈线
-    
-    3. **正确心态**
-    - 视投注为娱乐消费
-    - 接受损失是体验的一部分
-    - 享受比赛本身
-    """)
-
-with col2:
-    st.markdown("""
-    ### ⚠️ 必须避免
-    
-    1. **追注行为**
-    - "已经输这么多，必须追回来"
-    - 情绪化决策
-    - 忽视资金管理
-    
-    2. **认知偏差**
-    - "我连胜3场，我有技巧"
-    - "连开5次大，下次必小"
-    - 为失败找外部借口
-    
-    3. **不切实际期望**
-    - 视投注为投资
-    - 追求"财务自由"
-    - 高估预测能力
-    """)
-
-# --- 最终警示 ---
-st.divider()
-st.markdown("""
-<div style='text-align: center; padding: 1.5rem; background-color: #f8d7da; border-radius: 10px;'>
-<h3 style='color: #721c24;'>⚠️ 重要提醒</h3>
-<p style='color: #721c24;'>
-<strong>体育投注不是投资，而是娱乐消费。</strong><br>
-庄家通过数学优势确保长期盈利，你的"技巧"无法改变数学现实。<br><br>
-<strong>如果你或你认识的人有赌博问题，请寻求帮助：</strong><br>
-• 全国戒赌热线：1-800-522-4700<br>
-• 设置自我排除<br>
-• 与专业人士交谈
-</p>
-</div>
-""", unsafe_allow_html=True)
-
-# --- 脚注 ---
-st.caption("""
-*本工具仅用于教育目的，展示赌博的数学原理和风险。不鼓励任何形式的赌博行为。*  
-*所有计算基于概率理论，实际结果可能因多种因素而异。*  
-*如果你需要赌博问题帮助，请联系专业机构。*
-""")
+**数学原理：**
