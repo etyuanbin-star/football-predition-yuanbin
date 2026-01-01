@@ -45,6 +45,20 @@ st.markdown("""
         margin: 10px 0;
         border-radius: 5px;
     }
+    .odds-input-section {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+        margin: 10px 0;
+    }
+    .tab-container {
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        padding: 10px;
+        margin: 10px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -93,8 +107,8 @@ with st.sidebar:
     
     st.divider()
     st.header("⚖️ 核心大球项 (O2.5)")
-    o25_odds = st.number_input("大球 (3球+) 赔率", value=2.30, step=0.01)
-    o25_stake = st.number_input("大球投入金额 ($)", value=100.0, step=1.0)
+    o25_odds = st.number_input("大球 (3球+) 赔率", value=2.30, step=0.01, min_value=1.01)
+    o25_stake = st.number_input("大球投入金额 ($)", value=100.0, step=1.0, min_value=0.0)
     
     st.divider()
     st.header("🧠 风险参数")
@@ -212,13 +226,10 @@ if mode == "策略 1：比分精准流":
 
 else:  # 策略 2：总进球复式流
     with col_in:
-        st.markdown('<div class="strategy-note">🎯 <strong>策略说明</strong>：本策略需要两场比赛 - 稳胆比赛 + 总进球复式比赛，组成2串1复式投注。</div>', unsafe_allow_html=True)
+        st.markdown('<div class="strategy-note">🎯 <strong>策略说明</strong>：本策略由两场比赛组成<br>1. 稳胆比赛（独立比赛）<br>2. 主比赛（大球+总进球复式）</div>', unsafe_allow_html=True)
         
-        # 分隔符
-        st.markdown("---")
-        
-        # 第一场比赛：稳胆比赛
-        st.write("### 🏆 稳胆比赛")
+        # 第一场比赛：稳胆比赛（独立比赛）
+        st.write("### 🏆 稳胆比赛设置（独立比赛）")
         col_s2a1, col_s2a2, col_s2a3 = st.columns([2, 1, 2])
         with col_s2a1:
             s2_home_team = st.text_input("🏠 稳胆主队", value="利物浦", placeholder="输入稳胆主队", key="s2_home")
@@ -227,11 +238,8 @@ else:  # 策略 2：总进球复式流
         with col_s2a3:
             s2_away_team = st.text_input("✈️ 稳胆客队", value="诺丁汉森林", placeholder="输入稳胆客队", key="s2_away")
         
-        col_s2a4, col_s2a5 = st.columns(2)
-        with col_s2a4:
-            s2_league = st.selectbox("📋 稳胆联赛", ["英超", "欧冠", "西甲", "德甲", "意甲", "法甲", "其他"], key="s2_league")
-        with col_s2a5:
-            strong_win = st.number_input("📊 稳胆赔率", value=1.35, min_value=1.01, step=0.01, help="稳胆比赛的胜/平/负赔率")
+        # 稳胆比赛联赛
+        s2_league = st.selectbox("📋 稳胆联赛", ["英超", "欧冠", "西甲", "德甲", "意甲", "法甲", "其他"], key="s2_league")
         
         # 显示稳胆比赛信息卡
         st.markdown(f"""
@@ -241,47 +249,100 @@ else:  # 策略 2：总进球复式流
                     {s2_home_team} <span style="color: #666; font-weight: normal;">vs</span> {s2_away_team}
                 </div>
                 <div style="font-size: 12px; color: #666;">
-                    {s2_league} · 稳胆赔率: {strong_win}
+                    {s2_league}
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
+        # 稳胆比赛赔率输入
+        st.markdown("### 📊 稳胆比赛赔率设置")
+        
+        # 使用标签页组织不同类型的赔率
+        tab1, tab2 = st.tabs(["标准盘口 (胜平负)", "亚洲盘口 (让球)"])
+        
+        with tab1:
+            st.markdown('<div class="tab-container">', unsafe_allow_html=True)
+            st.write("##### 标准胜平负赔率")
+            col_std1, col_std2, col_std3 = st.columns(3)
+            with col_std1:
+                s2_win_odds = st.number_input(f"{s2_home_team} 胜", value=1.35, min_value=1.01, step=0.01, key="s2_win_odds")
+            with col_std2:
+                s2_draw_odds = st.number_input("平局", value=4.50, min_value=1.01, step=0.01, key="s2_draw_odds")
+            with col_std3:
+                s2_lose_odds = st.number_input(f"{s2_away_team} 胜", value=8.00, min_value=1.01, step=0.01, key="s2_lose_odds")
+            
+            # 选择稳胆选项
+            st.write("##### 选择稳胆选项")
+            s2_selection = st.radio(
+                "请选择稳胆投注选项:",
+                [f"{s2_home_team} 胜", "平局", f"{s2_away_team} 胜"],
+                horizontal=True,
+                key="s2_selection"
+            )
+            
+            # 根据选择获取赔率
+            if s2_selection == f"{s2_home_team} 胜":
+                strong_win = s2_win_odds
+            elif s2_selection == "平局":
+                strong_win = s2_draw_odds
+            else:
+                strong_win = s2_lose_odds
+                
+            st.info(f"选择的稳胆赔率: **{strong_win}**")
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        with tab2:
+            st.markdown('<div class="tab-container">', unsafe_allow_html=True)
+            st.write("##### 亚洲让球盘口")
+            
+            # 让球数选择
+            col_handicap1, col_handicap2 = st.columns(2)
+            with col_handicap1:
+                handicap_value = st.selectbox("让球数", ["-2.5", "-2", "-1.5", "-1", "-0.5", "0", "+0.5", "+1", "+1.5", "+2", "+2.5"], index=5)
+            
+            # 解释让球
+            if handicap_value.startswith("-"):
+                st.info(f"{s2_home_team} 让 {handicap_value[1:]} 球")
+            elif handicap_value.startswith("+"):
+                st.info(f"{s2_away_team} 让 {handicap_value[1:]} 球")
+            else:
+                st.info("平手盘")
+            
+            # 让球赔率
+            col_hdp1, col_hdp2 = st.columns(2)
+            with col_hdp1:
+                s2_hdp_home_odds = st.number_input(f"{s2_home_team} 让球胜", value=1.80, min_value=1.01, step=0.01, key="s2_hdp_home")
+            with col_hdp2:
+                s2_hdp_away_odds = st.number_input(f"{s2_away_team} 让球胜", value=2.05, min_value=1.01, step=0.01, key="s2_hdp_away")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+        
         # 分隔符
         st.markdown("---")
         
-        # 第二场比赛：总进球复式比赛
-        st.write("### 🎯 总进球复式比赛")
-        col_s2b1, col_s2b2, col_s2b3 = st.columns([2, 1, 2])
-        with col_s2b1:
-            s2b_home_team = st.text_input("🏠 复式主队", value="切尔西", placeholder="输入复式主队", key="s2b_home")
-        with col_s2b2:
-            st.markdown("<h4 style='text-align: center; margin-top: 10px;'>VS</h4>", unsafe_allow_html=True)
-        with col_s2b3:
-            s2b_away_team = st.text_input("✈️ 复式客队", value="布莱顿", placeholder="输入复式客队", key="s2b_away")
+        # 第二场比赛：主比赛的总进球复式（与主比赛同一场）
+        st.write("### ⚽ 主比赛总进球复式设置")
+        st.info(f"**注意**: 总进球复式比赛与主比赛为同一场: {home_team} vs {away_team}")
         
-        s2b_league = st.selectbox("📋 复式联赛", ["英超", "欧冠", "西甲", "德甲", "意甲", "法甲", "其他"], key="s2b_league")
-        
-        # 显示复式比赛信息卡
+        # 显示主比赛信息卡
         st.markdown(f"""
-        <div class="match-info-secondary">
+        <div class="match-info">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="font-size: 16px; font-weight: bold;">
-                    {s2b_home_team} <span style="color: #666; font-weight: normal;">vs</span> {s2b_away_team}
+                    {home_team} <span style="color: #666; font-weight: normal;">vs</span> {away_team}
                 </div>
                 <div style="font-size: 12px; color: #666;">
-                    {s2b_league}
+                    {league} · 大球赔率: {o25_odds}
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
         # 总进球选项
-        st.write("##### ⚽ 总进球选项")
+        st.write("##### 总进球选项 (0-2球)")
         totals = ["0球", "1球", "2球"]
-        total_labels = [f"0球 ({s2b_home_team} vs {s2b_away_team} 无进球)", 
-                       f"1球 ({s2b_home_team} vs {s2b_away_team} 总进球=1)", 
-                       f"2球 ({s2b_home_team} vs {s2b_away_team} 总进球=2)"]
+        total_labels = [f"0球 (无进球)", f"1球 (总进球=1)", f"2球 (总进球=2)"]
         
         img_odds = {"0球": 7.20, "1球": 3.55, "2球": 3.00}
         
@@ -298,7 +359,7 @@ else:  # 策略 2：总进球复式流
         
         # 复式投注金额
         st.write("##### 💰 复式投注金额")
-        multi_stake = st.number_input("复式对冲总投入 ($)", value=100.0, min_value=0.0, step=10.0)
+        multi_stake = st.number_input("复式对冲总投入 ($)", value=100.0, min_value=0.0, step=10.0, key="s2_multi_stake")
         
         if selected:
             share = multi_stake / len(selected)
@@ -307,9 +368,9 @@ else:  # 策略 2：总进球复式流
             st.markdown(f"""
             <div class="strategy-note">
             📊 <strong>复式投注详情</strong><br>
-            1. 稳胆比赛: {s2_home_team} vs {s2_away_team} (赔率: {strong_win})<br>
-            2. 总进球比赛: {s2b_home_team} vs {s2b_away_team}<br>
-            3. 选择 {len(selected)} 个选项 × ${share:.2f} 每项<br>
+            1. 稳胆比赛: {s2_home_team} vs {s2_away_team} ({s2_selection}, 赔率: {strong_win})<br>
+            2. 总进球比赛: {home_team} vs {away_team}<br>
+            3. 选择 {len(selected)} 个总进球选项 × ${share:.2f} 每项<br>
             4. 组合赔率 = 稳胆赔率 × 总进球赔率
             </div>
             """, unsafe_allow_html=True)
@@ -320,15 +381,17 @@ else:  # 策略 2：总进球复式流
                     "item": item['name'], 
                     "odd": round(combined_odd, 2), 
                     "stake": share,
-                    "description": f"{s2_home_team}胜 × {s2b_home_team} vs {s2b_away_team} {item['name']}"
+                    "description": f"{s2_selection} × {item['name']}",
+                    "type": "复式串关"
                 })
         
-        # 添加大球项（原始比赛）
+        # 添加大球项（主比赛的大球投注）
         active_bets.append({
             "item": "3球+", 
             "odd": o25_odds, 
             "stake": o25_stake,
-            "description": f"{home_team} vs {away_team} 大球(3球+)"
+            "description": f"{home_team} vs {away_team} 大球(3球+)",
+            "type": "单独投注"
         })
         
         total_cost = sum(b['stake'] for b in active_bets)
@@ -345,48 +408,77 @@ else:  # 策略 2：总进球复式流
     with col_out:
         st.write("### 📊 模拟盈亏校验 (总进球复式流)")
         
-        # 策略2的可能结果
-        s2_outcomes = ["稳胆输", "稳胆赢+0球", "稳胆赢+1球", "稳胆赢+2球", "大球(3球+)"]
-        outcome_labels = [
-            f"{s2_home_team} vs {s2_away_team} 稳胆未中",
-            f"{s2_home_team}胜 × {s2b_home_team} vs {s2b_away_team} 0球",
-            f"{s2_home_team}胜 × {s2b_home_team} vs {s2b_away_team} 1球",
-            f"{s2_home_team}胜 × {s2b_home_team} vs {s2b_away_team} 2球",
-            f"{home_team} vs {away_team} 大球(3球+)"
-        ]
+        # 策略2的可能结果（基于两场比赛）
+        # 稳胆比赛结果：稳胆赢 vs 稳胆输
+        # 主比赛结果：0球、1球、2球、3球+
+        
+        # 但主比赛的0/1/2球和3球+是互斥的
+        # 所以总共有以下情况：
+        # 1. 稳胆输 + 主比赛0/1/2球
+        # 2. 稳胆输 + 主比赛3球+
+        # 3. 稳胆赢 + 主比赛0球（如果投注了0球）
+        # 4. 稳胆赢 + 主比赛1球（如果投注了1球）
+        # 5. 稳胆赢 + 主比赛2球（如果投注了2球）
+        # 6. 稳胆赢 + 主比赛3球+
         
         res_list = []
         
-        for i, out in enumerate(s2_outcomes):
-            income = 0
-            if out == "稳胆输":
-                # 稳胆输，只有大球可能赢
-                for bet in active_bets:
-                    if bet["item"] == "3球+":
-                        income += bet['stake'] * bet['odd']
-            elif out == "大球(3球+)":
-                # 大球赢，加上所有稳胆赢的复式投注
-                for bet in active_bets:
-                    if bet["item"] == "3球+":
-                        income += bet['stake'] * bet['odd']
-                    # 稳胆赢了，但总进球复式不匹配大球情况
-            else:
-                # 稳胆赢 + 特定总进球
-                total_goals = out.split("+")[1]  # 如"0球"
-                for bet in active_bets:
-                    if bet["item"] == total_goals:
-                        income += bet['stake'] * bet['odd']
+        # 情况1: 稳胆输 + 主比赛0/1/2球 (但未投注该进球数，或投注了但不是稳胆赢)
+        # 这种情况只能赢大球，但大球是3球+，所以大球也输，全部输
+        income = 0
+        net_profit = round(income - total_cost, 2)
+        res_list.append({
+            "模拟赛果": f"① 稳胆输 + 主比赛0/1/2球\n(未投注该进球数)",
+            "净盈亏": net_profit,
+            "类型": "全输",
+            "稳胆结果": "输",
+            "主比赛结果": "0/1/2球"
+        })
+        
+        # 情况2: 稳胆输 + 主比赛3球+
+        # 大球赢，但复式输
+        income = o25_stake * o25_odds
+        net_profit = round(income - total_cost, 2)
+        res_list.append({
+            "模拟赛果": f"② 稳胆输 + 主比赛3球+\n(大球赢，复式输)",
+            "净盈亏": net_profit,
+            "类型": "部分赢",
+            "稳胆结果": "输",
+            "主比赛结果": "3球+"
+        })
+        
+        # 情况3-5: 稳胆赢 + 主比赛特定进球数（如果投注了）
+        for i, goal_option in enumerate(["0球", "1球", "2球"]):
+            # 检查是否投注了这个进球数
+            is_bet_on_goal = any(b["item"] == goal_option for b in active_bets if b["type"] == "复式串关")
             
-            net_profit = round(income - total_cost, 2)
-            
-            # 判断结果类型
-            result_type = "大球胜" if out == "大球(3球+)" else "复式胜" if "稳胆赢" in out else "全输"
-            
-            res_list.append({
-                "模拟赛果": outcome_labels[i],
-                "净盈亏": net_profit,
-                "类型": result_type
-            })
+            if is_bet_on_goal:
+                # 找到对应的投注项
+                bet_item = next(b for b in active_bets if b["item"] == goal_option and b["type"] == "复式串关")
+                
+                # 稳胆赢 + 该特定进球数：复式赢，但大球输（因为不是3球+）
+                income = bet_item['stake'] * bet_item['odd']
+                net_profit = round(income - total_cost, 2)
+                
+                res_list.append({
+                    "模拟赛果": f"③ 稳胆赢 + 主比赛{goal_option}\n(复式赢，大球输)",
+                    "净盈亏": net_profit,
+                    "类型": "部分赢",
+                    "稳胆结果": "赢",
+                    "主比赛结果": goal_option
+                })
+        
+        # 情况6: 稳胆赢 + 主比赛3球+
+        # 大球赢，但复式输（因为复式投的是0/1/2球）
+        income = o25_stake * o25_odds
+        net_profit = round(income - total_cost, 2)
+        res_list.append({
+            "模拟赛果": f"④ 稳胆赢 + 主比赛3球+\n(大球赢，复式输)",
+            "净盈亏": net_profit,
+            "类型": "部分赢",
+            "稳胆结果": "赢",
+            "主比赛结果": "3球+"
+        })
         
         df_s2 = pd.DataFrame(res_list)
         
@@ -396,21 +488,23 @@ else:  # 策略 2：总进球复式流
         
         # 显示详细表格
         st.write("##### 📋 详细盈亏表")
-        st.dataframe(df_s2, use_container_width=True, hide_index=True)
+        st.dataframe(df_s2[["模拟赛果", "净盈亏", "类型"]], use_container_width=True, hide_index=True)
         
         # 显示投注组合详情
         st.write("##### 🎯 投注组合详情")
         if selected:
             bet_details = []
             for i, bet in enumerate(active_bets):
-                if bet["item"] != "3球+":
+                if bet["type"] == "复式串关":
+                    base_odd = round(bet['odd'] / strong_win, 2)
                     bet_details.append({
-                        "组合": f"组合 {i+1}",
+                        "组合": f"串关 {i+1}",
                         "稳胆比赛": f"{s2_home_team} vs {s2_away_team}",
+                        "稳胆选项": s2_selection,
                         "稳胆赔率": strong_win,
-                        "总进球比赛": f"{s2b_home_team} vs {s2b_away_team}",
+                        "总进球比赛": f"{home_team} vs {away_team}",
                         "总进球选项": bet["item"],
-                        "总进球赔率": round(bet['odd'] / strong_win, 2),
+                        "总进球赔率": base_odd,
                         "组合赔率": bet['odd'],
                         "投入金额": f"${bet['stake']:.2f}"
                     })
@@ -418,6 +512,7 @@ else:  # 策略 2：总进球复式流
             bet_details.append({
                 "组合": "单独大球",
                 "稳胆比赛": "无",
+                "稳胆选项": "-",
                 "稳胆赔率": "-",
                 "总进球比赛": f"{home_team} vs {away_team}",
                 "总进球选项": "3球+",
@@ -448,34 +543,57 @@ if mode == "策略 1：比分精准流":
 else:
     current_df = df_s2
     # 策略2的EV计算
-    # 假设稳胆比赛胜率为70%，总进球分布概率
-    strong_win_prob = 0.70  # 稳胆胜率
-    goal_probs = {"0球": 0.15, "1球": 0.25, "2球": 0.30}  # 总进球分布
+    # 假设稳胆比赛胜率为70%
+    strong_win_prob = 0.70
+    
+    # 主比赛的概率分布（基于用户预测的大球概率）
+    # 剩余概率(1-pred_prob)分配给0/1/2球
+    # 这里简单分配：0球:20%, 1球:30%, 2球:50% 的剩余概率
+    goal_probs = {
+        "0球": (1 - pred_prob) * 0.20,
+        "1球": (1 - pred_prob) * 0.30,
+        "2球": (1 - pred_prob) * 0.50,
+        "3球+": pred_prob
+    }
     
     ev = 0
     for _, row in current_df.iterrows():
-        if "大球" in row["模拟赛果"]:
-            # 大球的概率
-            ev += row["净盈亏"] * pred_prob
-        elif "全输" in row["类型"]:
-            # 稳胆输的概率
-            ev += row["净盈亏"] * (1 - strong_win_prob)
-        elif "复式胜" in row["类型"]:
-            # 稳胆赢且特定总进球
-            # 从结果中提取总进球数
-            result_text = row["模拟赛果"]
-            if "0球" in result_text:
-                goal_prob = goal_probs["0球"]
-            elif "1球" in result_text:
-                goal_prob = goal_probs["1球"]
-            elif "2球" in result_text:
-                goal_prob = goal_probs["2球"]
-            else:
-                goal_prob = 0
+        scenario = row["模拟赛果"]
+        
+        if "稳胆输 + 主比赛0/1/2球" in scenario:
+            # 稳胆输的概率 × 主比赛0/1/2球的概率
+            prob = (1 - strong_win_prob) * (1 - pred_prob)
+            ev += row["净盈亏"] * prob
             
-            # 稳胆赢且特定总进球的概率
-            combined_prob = strong_win_prob * goal_prob
-            ev += row["净盈亏"] * combined_prob
+        elif "稳胆输 + 主比赛3球+" in scenario:
+            # 稳胆输的概率 × 主比赛3球+的概率
+            prob = (1 - strong_win_prob) * pred_prob
+            ev += row["净盈亏"] * prob
+            
+        elif "稳胆赢 + 主比赛0球" in scenario:
+            # 检查是否投注了0球
+            is_bet_on_0 = any(b["item"] == "0球" for b in active_bets if b["type"] == "复式串关")
+            if is_bet_on_0:
+                prob = strong_win_prob * goal_probs["0球"]
+                ev += row["净盈亏"] * prob
+                
+        elif "稳胆赢 + 主比赛1球" in scenario:
+            # 检查是否投注了1球
+            is_bet_on_1 = any(b["item"] == "1球" for b in active_bets if b["type"] == "复式串关")
+            if is_bet_on_1:
+                prob = strong_win_prob * goal_probs["1球"]
+                ev += row["净盈亏"] * prob
+                
+        elif "稳胆赢 + 主比赛2球" in scenario:
+            # 检查是否投注了2球
+            is_bet_on_2 = any(b["item"] == "2球" for b in active_bets if b["type"] == "复式串关")
+            if is_bet_on_2:
+                prob = strong_win_prob * goal_probs["2球"]
+                ev += row["净盈亏"] * prob
+                
+        elif "稳胆赢 + 主比赛3球+" in scenario:
+            prob = strong_win_prob * goal_probs["3球+"]
+            ev += row["净盈亏"] * prob
 
 # 显示EV
 col1, col2, col3 = st.columns(3)
@@ -510,12 +628,23 @@ with col3:
 # EV解释
 st.write("##### 💭 策略分析")
 if mode == "策略 2：总进球复式流":
+    # 计算主比赛概率分布
+    goal_probs_display = {
+        "0球": round((1 - pred_prob) * 0.20 * 100, 1),
+        "1球": round((1 - pred_prob) * 0.30 * 100, 1),
+        "2球": round((1 - pred_prob) * 0.50 * 100, 1),
+        "3球+": round(pred_prob * 100, 1)
+    }
+    
     st.markdown(f"""
     <div class="strategy-note">
     🎲 <strong>策略2概率假设</strong><br>
     1. 稳胆比赛 ({s2_home_team} vs {s2_away_team}) 胜率: 70%<br>
-    2. 总进球比赛 ({s2b_home_team} vs {s2b_away_team}) 进球分布: 0球(15%), 1球(25%), 2球(30%)<br>
-    3. 主大球比赛 ({home_team} vs {away_team}) 大球概率: {pred_prob*100:.1f}%
+    2. 主比赛 ({home_team} vs {away_team}) 进球分布:<br>
+       &nbsp;&nbsp;- 0球: {goal_probs_display['0球']}%<br>
+       &nbsp;&nbsp;- 1球: {goal_probs_display['1球']}%<br>
+       &nbsp;&nbsp;- 2球: {goal_probs_display['2球']}%<br>
+       &nbsp;&nbsp;- 3球+: {goal_probs_display['3球+']}%
     </div>
     """, unsafe_allow_html=True)
 
@@ -535,7 +664,7 @@ if show_monte_carlo and 'sim_trials' in locals():
         st.write(f"模拟设置：{sim_trials}次试验 × {sim_bets}次投注 | 比赛: {home_team} vs {away_team}")
     else:
         st.write(f"模拟设置：{sim_trials}次试验 × {sim_bets}次投注")
-        st.write(f"涉及比赛: 1. {home_team} vs {away_team} (大球) | 2. {s2_home_team} vs {s2_away_team} (稳胆) | 3. {s2b_home_team} vs {s2b_away_team} (总进球)")
+        st.write(f"涉及比赛: 1. {home_team} vs {away_team} (大球+总进球) | 2. {s2_home_team} vs {s2_away_team} (稳胆)")
     
     # 存储结果
     all_final_balances = []
@@ -570,15 +699,26 @@ if show_monte_carlo and 'sim_trials' in locals():
                     # 大球输
                     capital -= o25_stake
             else:
-                # 策略2模拟 - 涉及三场比赛
-                # 1. 主大球比赛结果
-                main_over25 = random.random() < pred_prob
-                
-                # 2. 稳胆比赛结果 (70%胜率)
+                # 策略2模拟 - 涉及两场比赛
+                # 1. 稳胆比赛结果 (70%胜率)
                 strong_win_result = random.random() < 0.70
                 
-                # 3. 总进球比赛结果
-                goal_outcome = random.choices(["0球", "1球", "2球", "3球+"], weights=[0.15, 0.25, 0.30, 0.30])[0]
+                # 2. 主比赛结果
+                # 基于预测的大球概率
+                main_over25 = random.random() < pred_prob
+                
+                if not main_over25:
+                    # 主比赛0/1/2球
+                    # 随机分配0/1/2球的概率
+                    goal_random = random.random()
+                    if goal_random < 0.20:  # 0球
+                        main_goals = "0球"
+                    elif goal_random < 0.50:  # 1球 (0.20+0.30)
+                        main_goals = "1球"
+                    else:  # 2球
+                        main_goals = "2球"
+                else:
+                    main_goals = "3球+"
                 
                 # 计算收益
                 if main_over25:
@@ -589,16 +729,24 @@ if show_monte_carlo and 'sim_trials' in locals():
                     capital -= o25_stake
                 
                 # 复式投注结果
-                if strong_win_result and goal_outcome in ["0球", "1球", "2球"]:
-                    # 找到对应的投注项
+                if strong_win_result and main_goals in ["0球", "1球", "2球"]:
+                    # 检查是否投注了这个进球数
+                    bet_found = False
                     for bet_item in active_bets:
-                        if bet_item["item"] == goal_outcome:
+                        if bet_item["type"] == "复式串关" and bet_item["item"] == main_goals:
                             capital += bet_item['stake'] * (bet_item['odd'] - 1)
+                            bet_found = True
                             break
+                    
+                    if not bet_found:
+                        # 投注了这个进球数，但没中
+                        for bet_item in active_bets:
+                            if bet_item["type"] == "复式串关":
+                                capital -= bet_item['stake']
                 else:
-                    # 复式投注输
+                    # 稳胆输或主比赛3球+，复式输
                     for bet_item in active_bets:
-                        if bet_item["item"] in ["0球", "1球", "2球"]:
+                        if bet_item["type"] == "复式串关":
                             capital -= bet_item['stake']
             
             # 更新峰值和最大回撤
@@ -755,19 +903,18 @@ with col_report1:
         st.markdown(f"""
         ### 📋 策略报告摘要
         
-        **涉及三场比赛**
+        **涉及两场比赛**
         
-        **1. 主大球比赛**
+        **1. 稳胆比赛**
+        - 🏆 {s2_league}: {s2_home_team} vs {s2_away_team}
+        - 📊 选择选项: {s2_selection}
+        - ⚖️ 稳胆赔率: {strong_win}
+        
+        **2. 主比赛 (大球+总进球)**
         - 🏆 {league}: {home_team} vs {away_team}
         - 📊 预测大球概率: {pred_prob*100:.1f}%
         - ⚖️ 大球赔率: {o25_odds}
-        
-        **2. 稳胆比赛**
-        - 🏆 {s2_league}: {s2_home_team} vs {s2_away_team}
-        - 📊 稳胆赔率: {strong_win}
-        
-        **3. 总进球复式比赛**
-        - 🏆 {s2b_league}: {s2b_home_team} vs {s2b_away_team}
+        - 🎯 总进球选项: {', '.join([item['name'] for item in selected]) if selected else '无'}
         
         **策略参数**
         - 🎯 选择策略: {mode}
@@ -845,21 +992,22 @@ with col_summary2:
         """)
     else:
         st.markdown(f"""
-        ### 💡 针对多场比赛的建议
+        ### 💡 针对两场比赛的建议
         
-        **涉及三场比赛**
+        **涉及两场比赛**
         
         1. **稳胆比赛要求**
         - 选择胜率高的比赛作为稳胆
         - 赔率不宜过低，确保组合赔率有吸引力
         
-        2. **总进球比赛选择**
-        - 选择进球分布可预测的比赛
-        - 避免进球数波动大的比赛
+        2. **主比赛分析**
+        - 大球概率: {pred_prob*100:.1f}%
+        - 总进球分布需仔细分析
+        - 对冲策略降低了单一投注的风险
         
-        3. **大球比赛独立分析**
-        - 单独分析主比赛的大球概率
-        - 不要因为串关而影响大球判断
+        3. **串关风险**
+        - 两场比赛都必须正确才能赢钱
+        - 风险比单场投注更高
         """)
     
     if ev > 0 and bankruptcy_rate < 15:
@@ -881,7 +1029,7 @@ st.divider()
 if mode == "策略 1：比分精准流":
     match_info = f"{home_team} vs {away_team}"
 else:
-    match_info = f"1. {home_team} vs {away_team} | 2. {s2_home_team} vs {s2_away_team} | 3. {s2b_home_team} vs {s2b_away_team}"
+    match_info = f"1. {home_team} vs {away_team} (大球+总进球) | 2. {s2_home_team} vs {s2_away_team} (稳胆)"
 
 st.markdown(f"""
 <div style='text-align: center; padding: 1.5rem; background-color: #f8d7da; border-radius: 10px;'>
