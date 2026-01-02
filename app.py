@@ -3,9 +3,10 @@ import pandas as pd
 import numpy as np
 import random
 from datetime import datetime
+from collections import Counter
 
 # --- 1. 页面配置 ---
-st.set_page_config(page_title="胜算实验室：点对点逻辑修正", layout="wide")
+st.set_page_config(page_title="胜算实验室：投注策略模拟", layout="wide")
 
 # --- 自定义CSS样式 ---
 st.markdown("""
@@ -136,6 +137,53 @@ with st.sidebar:
     st.info(f"系统建议概率: {min(max(adj_prob, 10), 90):.1f}%")
     
     pred_prob = st.slider("你预测的大球概率 (%)", 10, 90, int(min(max(adj_prob, 10), 90))) / 100
+    
+    # --- 添加AI模型比分预测 ---
+    st.markdown("---")
+    st.subheader("🤖 AI模型比分预测")
+    
+    # 创建三列布局显示不同模型的预测
+    col_ai1, col_ai2, col_ai3 = st.columns(3)
+    
+    with col_ai1:
+        st.markdown("**GPT模型**")
+        gpt_pred1 = st.text_input("预测1", value="2-1", key="gpt1", label_visibility="collapsed")
+        gpt_pred2 = st.text_input("预测2", value="3-1", key="gpt2", label_visibility="collapsed")
+        gpt_pred3 = st.text_input("预测3", value="1-1", key="gpt3", label_visibility="collapsed")
+    
+    with col_ai2:
+        st.markdown("**Gemini模型**")
+        gemini_pred1 = st.text_input("预测1", value="2-0", key="gemini1", label_visibility="collapsed")
+        gemini_pred2 = st.text_input("预测2", value="3-2", key="gemini2", label_visibility="collapsed")
+        gemini_pred3 = st.text_input("预测3", value="1-2", key="gemini3", label_visibility="collapsed")
+    
+    with col_ai3:
+        st.markdown("**DeepSeek模型**")
+        deepseek_pred1 = st.text_input("预测1", value="2-2", key="deepseek1", label_visibility="collapsed")
+        deepseek_pred2 = st.text_input("预测2", value="3-0", key="deepseek2", label_visibility="collapsed")
+        deepseek_pred3 = st.text_input("预测3", value="0-2", key="deepseek3", label_visibility="collapsed")
+    
+    # 显示汇总
+    with st.expander("📊 查看AI预测汇总"):
+        st.write(f"**GPT模型预测比分**: {gpt_pred1} / {gpt_pred2} / {gpt_pred3}")
+        st.write(f"**Gemini模型比分预测**: {gemini_pred1} / {gemini_pred2} / {gemini_pred3}")
+        st.write(f"**DeepSeek模型比分预测**: {deepseek_pred1} / {deepseek_pred2} / {deepseek_pred3}")
+        
+        # 添加简单的统计
+        all_predictions = [
+            gpt_pred1, gpt_pred2, gpt_pred3,
+            gemini_pred1, gemini_pred2, gemini_pred3,
+            deepseek_pred1, deepseek_pred2, deepseek_pred3
+        ]
+        
+        # 统计最常见的预测
+        prediction_counts = Counter(all_predictions)
+        most_common = prediction_counts.most_common(3)
+        
+        if most_common:
+            st.write("**最常预测的比分**:")
+            for pred, count in most_common:
+                st.write(f"- {pred}: {count}次 ({count/len(all_predictions)*100:.1f}%)")
     
     st.divider()
     mode = st.radio("请选择执行策略：", ["策略 1：比分精准流", "策略 2：总进球复式流"])
