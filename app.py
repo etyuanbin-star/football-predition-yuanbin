@@ -6,7 +6,7 @@ from datetime import datetime
 from collections import Counter
 
 # --- 1. 页面配置 ---
-st.set_page_config(page_title="胜算实验室：投注策略模拟", layout="wide")
+st.set_page_config(page_title="胜算实验室：策略风险模拟", layout="wide")
 
 # --- 自定义CSS样式 ---
 st.markdown("""
@@ -73,7 +73,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 2. 主比赛信息输入 ---
-st.markdown('<div class="team-header"><h1>🔺 胜算实验室：全功能风控系统</h1></div>', unsafe_allow_html=True)
+st.markdown('<div class="team-header"><h1>🔺 胜算实验室：策略风险模拟系统</h1></div>', unsafe_allow_html=True)
 st.caption("核心功能：策略模拟 + EV计算 + 蒙特卡洛实验")
 
 # 创建两列布局用于主比赛信息输入
@@ -90,9 +90,21 @@ col_match_info1, col_match_info2, col_match_info3 = st.columns(3)
 with col_match_info1:
     league = st.selectbox("🏆 联赛", ["英超", "欧冠", "西甲", "德甲", "意甲", "法甲", "其他"])
 with col_match_info2:
-    match_date = st.date_input("📅 比赛日期", value=datetime.now().date())
+    # 初始化session_state中的日期
+    if 'match_date' not in st.session_state:
+        st.session_state.match_date = datetime.now().date()
+    
+    match_date = st.date_input("📅 比赛日期", value=st.session_state.match_date, key="match_date_input")
+    # 更新session_state
+    st.session_state.match_date = match_date
 with col_match_info3:
-    match_time = st.time_input("⏰ 比赛时间", value=datetime.now().time())
+    # 初始化session_state中的时间
+    if 'match_time' not in st.session_state:
+        st.session_state.match_time = datetime.now().time()
+    
+    match_time = st.time_input("⏰ 比赛时间", value=st.session_state.match_time, key="match_time_input")
+    # 更新session_state
+    st.session_state.match_time = match_time
 
 # 显示主比赛信息卡
 st.markdown(f"""
