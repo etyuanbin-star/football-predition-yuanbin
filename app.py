@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import random
+import re
 from datetime import datetime
 from collections import Counter
 
 # --- 1. 页面配置 ---
-st.set_page_config(page_title="胜算实验室：策略风险模拟", layout="wide")
+st.set_page_config(page_title="胜算实验室：点对点逻辑修正", layout="wide")
 
 # --- 自定义CSS样式 ---
 st.markdown("""
@@ -69,11 +70,168 @@ st.markdown("""
         font-weight: bold;
         margin-right: 5px;
     }
+    .history-stats {
+        background-color: #e7f3ff;
+        border-radius: 8px;
+        padding: 10px;
+        margin: 10px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
+# --- 解析历史战绩数据的函数 ---
+def parse_history_data(history_text, current_home, current_away):
+    """解析历史战绩数据，提取比赛信息"""
+    matches = []
+    lines = history_text.strip().split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # 尝试解析各种格式的比分
+        try:
+            # 正则表达式匹配比分
+            # 匹配格式: 数字 - 数字 或 数字–数字
+            score_pattern = r'(\d+)\s*[-–]\s*(\d+)'
+            match = re.search(score_pattern, line)
+            
+            if match:
+                home_goals = int(match.group(1))
+                away_goals = int(match.group(2))
+                
+                # 尝试确定这场比赛的主队（基于当前主队名称是否在行中出现）
+                # 这是一个简化的逻辑，实际应用中可能需要更复杂的解析
+                line_lower = line.lower()
+                current_home_lower = current_home.lower()
+                current_away_lower = current_away.lower()
+                
+                # 如果当前主队名称出现在比分前，认为它是主队
+                # 否则，如果当前客队名称出现在比分前，认为它是主队
+                # 都不匹配，则默认第一个队是主队
+                
+                # 查找比分位置
+                score_start = match.start()
+                before_score = line_lower[:score_start]
+                
+                if current_home_lower in before_score:
+                    # 当前主队是这场比赛的主队
+                    matches.append({
+                        'home_goals': home_goals,
+                        'away_goals': away_goals,
+                        'total_goals': home_goals + away_goals,
+                        'result': '主胜' if home_goals > away_goals else ('客胜' if home_goals < away_goals else '平局'),
+                        'home_team_current_perspective': True  # 从当前视角看，主队是主队
+                    })
+                elif current_away_lower in before_score:
+                    # 当前客队是这场比赛的主队
+                    matches.append({
+                        'home_goals': away_goals,  # 注意交换，因为当前客队是那场比赛的主队
+                        'away_goals': home_goals,
+                        'total_goals': home_goals + away_goals,
+                        'result': '客胜' if home_goals > away_goals else ('主胜' if home_goals < away_goals else '平局'),
+                        'home_team_current_perspective': False  # 从当前视角看，主队是客队
+                    })
+                else:
+                    # 无法确定，使用默认（第一个队是主队）
+                    matches.append({
+                        'home_goals': home_goals,
+                        'away_goals': away_goals,
+                        'total_goals': home_goals + away_goals,
+                        'result': '主胜' if home_goals > away_goals else ('客胜' if home_goals < away_goals else '平局'),
+                        'home_team_current_perspective': True  # 默认
+                    })
+        except Exception as e:
+            # 如果解析失败，跳过这一行
+            continue
+    
+    return matches
+
+# --- 计算统计信息的函数 ---
+def calculate_statistics(matches, current_home, current_away):
+    """计算历史战绩统计信息"""
+    if not matches:
+        return None
+    
+    stats = {
+        'total_matches': len(matches),
+        'home_wins': 0,  # 当前主队获胜次数（从当前视角）
+        'away_wins': 0,  # 当前客队获胜次数（从当前视角）
+        'draws': 0,
+        'total_goals': 0,
+        'over_25': 0,  # 大球次数（总进球>2.5）
+        'under_25': 0, # 小球次数（总进球<2.5）
+        'score_distribution': {},  # 比分分布
+        'goal_distribution': {},   # 总进球数分布
+        'current_home_goals': 0,  # 当前主队总进球
+        'current_away_goals': 0,  # 当前客队总进球
+    }
+    
+    for match in matches:
+        home_goals = match['home_goals']
+        away_goals = match['away_goals']
+        total_goals = home_goals + away_goals
+        
+        # 统计当前视角下的胜负平
+        if home_goals > away_goals:
+            stats['home_wins'] += 1
+        elif home_goals < away_goals:
+            stats['away_wins'] += 1
+        else:
+            stats['draws'] += 1
+        
+        # 统计总进球
+        stats['total_goals'] += total_goals
+        
+        # 统计当前主客队进球
+        stats['current_home_goals'] += home_goals
+        stats['current_away_goals'] += away_goals
+        
+        # 大球/小球统计
+        if total_goals > 2.5:
+            stats['over_25'] += 1
+        else:
+            stats['under_25'] += 1
+        
+        # 比分分布（从当前视角）
+        score = f"{home_goals}-{away_goals}"
+        if score in stats['score_distribution']:
+            stats['score_distribution'][score] += 1
+        else:
+            stats['score_distribution'][score] = 1
+        
+        # 总进球数分布
+        if total_goals in stats['goal_distribution']:
+            stats['goal_distribution'][total_goals] += 1
+        else:
+            stats['goal_distribution'][total_goals] = 1
+    
+    # 计算百分比
+    stats['home_win_rate'] = stats['home_wins'] / stats['total_matches'] * 100 if stats['total_matches'] > 0 else 0
+    stats['away_win_rate'] = stats['away_wins'] / stats['total_matches'] * 100 if stats['total_matches'] > 0 else 0
+    stats['draw_rate'] = stats['draws'] / stats['total_matches'] * 100 if stats['total_matches'] > 0 else 0
+    stats['avg_goals'] = stats['total_goals'] / stats['total_matches'] if stats['total_matches'] > 0 else 0
+    stats['over_25_rate'] = stats['over_25'] / stats['total_matches'] * 100 if stats['total_matches'] > 0 else 0
+    stats['under_25_rate'] = stats['under_25'] / stats['total_matches'] * 100 if stats['total_matches'] > 0 else 0
+    stats['avg_home_goals'] = stats['current_home_goals'] / stats['total_matches'] if stats['total_matches'] > 0 else 0
+    stats['avg_away_goals'] = stats['current_away_goals'] / stats['total_matches'] if stats['total_matches'] > 0 else 0
+    
+    # 计算最常见比分
+    if stats['score_distribution']:
+        most_common_score = max(stats['score_distribution'].items(), key=lambda x: x[1])
+        stats['most_common_score'] = most_common_score[0]
+        stats['most_common_score_count'] = most_common_score[1]
+        stats['most_common_score_rate'] = most_common_score[1] / stats['total_matches'] * 100
+    else:
+        stats['most_common_score'] = "无数据"
+        stats['most_common_score_count'] = 0
+        stats['most_common_score_rate'] = 0
+    
+    return stats
+
 # --- 2. 主比赛信息输入 ---
-st.markdown('<div class="team-header"><h1>🔺 胜算实验室：策略风险模拟系统</h1></div>', unsafe_allow_html=True)
+st.markdown('<div class="team-header"><h1>🔺 胜算实验室：全功能风控系统</h1></div>', unsafe_allow_html=True)
 st.caption("核心功能：策略模拟 + EV计算 + 蒙特卡洛实验")
 
 # 创建两列布局用于主比赛信息输入
@@ -133,22 +291,120 @@ with st.sidebar:
     o25_stake = st.number_input("大球投入金额 ($)", value=100.0, step=1.0, min_value=0.0)
     
     st.divider()
-    st.header("🧠 风险参数")
+    st.header("📊 历史战绩分析")
     
-    # 添加基本面分析
-    st.subheader("🏟️ 基本面分析")
-    home_attack = st.slider(f"{home_team} 进攻力", 1, 10, 8)
-    away_defense = st.slider(f"{away_team} 防守力", 1, 10, 7)
-    historical_goals = st.slider("历史交锋场均进球", 1.0, 5.0, 2.8, step=0.1)
+    # 显示当前对阵
+    st.subheader(f"历史交锋：{home_team} vs {away_team}")
     
-    # 根据分析调整预测概率
-    base_prob = 45  # 基础概率45%
-    adj_factor = (home_attack + (10 - away_defense)) / 20  # 调整因子
-    adj_prob = base_prob + (historical_goals - 2.5) * 10
+    # 历史战绩输入区域
+    st.write("##### 📋 历史战绩数据输入")
+    st.caption("请粘贴两队历史交锋记录（每行一场比赛）：")
     
-    st.info(f"系统建议概率: {min(max(adj_prob, 10), 90):.1f}%")
+    # 预填充一些示例数据
+    default_history = """02/05/2025 Rayo Vallecano 1 - 0 (1 - 0) Getafe
+24/08/2024 Getafe 0 - 0 (0 - 0) Rayo Vallecano
+13/04/2024 Rayo Vallecano 0 - 0 (0 - 0) Getafe
+02/01/2024 Getafe 0 - 2 (0 - 1) Rayo Vallecano
+12/02/2023 Getafe 1 - 1 (0 - 1) Rayo Vallecano
+14/10/2022 Rayo Vallecano 0 - 0 (0 - 0) Getafe
+08/05/2022 Getafe 0 - 0 (0 - 0) Rayo Vallecano
+18/09/2021 Rayo Vallecano 3 - 0 (1 - 0) Getafe"""
     
-    pred_prob = st.slider("你预测的大球概率 (%)", 10, 90, int(min(max(adj_prob, 10), 90))) / 100
+    history_data = st.text_area(
+        "历史战绩数据", 
+        value=default_history,
+        height=150,
+        placeholder="格式示例：日期 主队 比分 (半场比分) 客队\n每行一场比赛"
+    )
+    
+    # 当用户输入历史数据时，自动分析
+    if history_data:
+        matches = parse_history_data(history_data, home_team, away_team)
+        
+        if matches:
+            stats = calculate_statistics(matches, home_team, away_team)
+            
+            if stats:
+                # 显示统计摘要
+                st.write("##### 📈 历史战绩统计摘要")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("总比赛场数", f"{stats['total_matches']}场")
+                    st.metric(f"{home_team}胜率", f"{stats['home_win_rate']:.1f}%")
+                with col2:
+                    st.metric("场均总进球", f"{stats['avg_goals']:.2f}")
+                    st.metric(f"{away_team}胜率", f"{stats['away_win_rate']:.1f}%")
+                with col3:
+                    st.metric("大球比例", f"{stats['over_25_rate']:.1f}%")
+                    st.metric("平局比例", f"{stats['draw_rate']:.1f}%")
+                
+                # 显示详细统计
+                with st.expander("📊 查看详细历史统计"):
+                    # 胜负平分布
+                    st.write("**比赛结果分布**")
+                    result_data = pd.DataFrame({
+                        '结果': [f'{home_team}胜', f'{away_team}胜', '平局'],
+                        '场次': [stats['home_wins'], stats['away_wins'], stats['draws']],
+                        '比例%': [stats['home_win_rate'], stats['away_win_rate'], stats['draw_rate']]
+                    })
+                    st.dataframe(result_data, use_container_width=True, hide_index=True)
+                    
+                    # 比分分布
+                    st.write("**比分分布统计**")
+                    if stats['score_distribution']:
+                        score_dist_df = pd.DataFrame(
+                            list(stats['score_distribution'].items()),
+                            columns=['比分', '出现次数']
+                        ).sort_values('出现次数', ascending=False)
+                        
+                        if not score_dist_df.empty:
+                            st.dataframe(score_dist_df, use_container_width=True, hide_index=True)
+                    
+                    # 总进球分布
+                    st.write("**总进球数分布**")
+                    if stats['goal_distribution']:
+                        goal_dist_df = pd.DataFrame(
+                            list(stats['goal_distribution'].items()),
+                            columns=['总进球', '出现次数']
+                        ).sort_values('总进球')
+                        
+                        if not goal_dist_df.empty:
+                            st.bar_chart(goal_dist_df.set_index('总进球')['出现次数'])
+                    
+                    # 显示平均进球
+                    st.write("**平均进球统计**")
+                    avg_goals_df = pd.DataFrame({
+                        '球队': [home_team, away_team, '总计'],
+                        '平均进球': [stats['avg_home_goals'], stats['avg_away_goals'], stats['avg_goals']]
+                    })
+                    st.dataframe(avg_goals_df, use_container_width=True, hide_index=True)
+                
+                # 使用历史数据的大球比例来调整预测概率
+                historical_over_rate = stats['over_25_rate']
+                
+                # 根据历史大球比例调整预测概率
+                st.markdown("---")
+                st.write("##### 🎯 基于历史数据调整预测")
+                st.info(f"📊 历史交锋大球比例: {historical_over_rate:.1f}%")
+                
+                # 让用户基于历史数据调整预测
+                pred_prob = st.slider(
+                    "你预测的大球概率 (%)", 
+                    10, 90, 
+                    int(min(max(historical_over_rate, 10), 90)),  # 使用历史数据作为默认值
+                    key="pred_prob_history"
+                ) / 100
+            else:
+                st.warning("⚠️ 未能从输入的数据中计算统计信息。")
+                pred_prob = st.slider("你预测的大球概率 (%)", 10, 90, 48) / 100
+        else:
+            st.warning("⚠️ 未能从输入的数据中提取有效的比赛信息。请检查格式。")
+            pred_prob = st.slider("你预测的大球概率 (%)", 10, 90, 48) / 100
+    else:
+        # 如果没有输入历史数据，使用默认滑块
+        st.write("##### 🎯 预测大球概率")
+        pred_prob = st.slider("你预测的大球概率 (%)", 10, 90, 48) / 100
     
     # --- 添加AI模型比分预测 ---
     st.markdown("---")
