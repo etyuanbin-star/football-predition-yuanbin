@@ -1387,19 +1387,48 @@ with col_summary1:
 
 with col_summary2:
     if mode == "策略 1：比分精准流":
-        st.markdown(f"""
-        ### 💡 针对本场比赛的建议
+        # 尝试获取历史统计数据
+        history_stats_available = False
+        stats_info = None
         
-        **{home_team} vs {away_team}**
+        # 检查是否有历史数据输入
+        if 'history_data' in locals() and history_data:
+            matches = parse_history_data(history_data, home_team, away_team)
+            if matches:
+                stats = calculate_statistics(matches, home_team, away_team)
+                if stats:
+                    history_stats_available = True
+                    stats_info = stats
         
-        1. **基本面分析**
-        - {home_team} 进攻力: {home_attack}/10
-        - {away_team} 防守力: {away_defense}/10
-        - 历史交锋场均进球: {historical_goals}
-        
-        2. **策略建议**
-        """)
+        if history_stats_available and stats_info:
+            st.markdown(f"""
+            ### 💡 针对本场比赛的建议
+            
+            **{home_team} vs {away_team}**
+            
+            1. **历史战绩分析**
+            - 总比赛场数: {stats_info['total_matches']}场
+            - {home_team}胜率: {stats_info['home_win_rate']:.1f}%
+            - {away_team}胜率: {stats_info['away_win_rate']:.1f}%
+            - 场均总进球: {stats_info['avg_goals']:.2f}
+            
+            2. **策略建议**
+            基于历史数据，两队交锋大球比例为 {stats_info['over_25_rate']:.1f}%，当前预测概率为 {pred_prob*100:.1f}%。
+            """)
+        else:
+            st.markdown(f"""
+            ### 💡 针对本场比赛的建议
+            
+            **{home_team} vs {away_team}**
+            
+            1. **分析建议**
+            - 请在侧边栏输入两队历史交锋记录，以获得更准确的分析
+            - 当前预测大球概率: {pred_prob*100:.1f}%
+            
+            2. **策略建议**
+            """)
     else:
+        # 策略2部分保持不变
         st.markdown(f"""
         ### 💡 2串1复式投注建议
         
@@ -1419,12 +1448,16 @@ with col_summary2:
         - 需要两场比赛都判断正确
         """)
     
-    if ev > 0 and bankruptcy_rate < 15:
-        st.success("当前策略参数合理，可考虑小规模执行")
-    elif ev > 0:
-        st.warning("策略有盈利可能，但风险较高，建议降低仓位")
-    else:
+    # 风险评估部分
+    if 'ev' in locals() and ev > 0:
+        if 'bankruptcy_rate' in locals() and bankruptcy_rate < 15:
+            st.success("当前策略参数合理，可考虑小规模执行")
+        else:
+            st.warning("策略有盈利可能，但风险较高，建议降低仓位")
+    elif 'ev' in locals() and ev < 0:
         st.error("策略负期望值，建议放弃或大幅调整")
+    else:
+        st.info("策略期望值为零，需要进一步分析")
     
     st.markdown("""
     3. **最佳选择**
