@@ -458,12 +458,7 @@ with st.sidebar:
     
     st.divider()
     st.header("🎲 蒙特卡洛实验")
-    show_monte_carlo = st.checkbox("启用蒙特卡洛模拟", value=True)
-    
-    if show_monte_carlo:
-        sim_trials = st.slider("模拟试验次数", 100, 10000, 1000)
-        sim_bets = st.slider("每次试验投注次数", 10, 500, 100)
-        initial_capital = st.number_input("初始资金 ($)", value=1000.0)
+    show_monte_carlo = st.checkbox("启用蒙特卡洛模拟", value=False)
 
 # --- 4. 逻辑处理核心 ---
 st.divider()
@@ -1063,217 +1058,21 @@ elif ev > 0 and ev <= simple_ev:
 else:
     st.error(f"**策略需要调整** | 当前策略负期望值")
 
-# --- 6. 蒙特卡洛实验 ---
-if show_monte_carlo and 'sim_trials' in locals():
+# --- 6. 蒙特卡洛实验已移除 ---
+if show_monte_carlo:
     st.divider()
     st.header("🎲 蒙特卡洛模拟实验")
-    
-    if mode == "策略 1：比分精准流":
-        st.write(f"模拟设置：{sim_trials}次试验 × {sim_bets}次投注 | 比赛: {home_team} vs {away_team}")
-    else:
-        st.write(f"模拟设置：{sim_trials}次试验 × {sim_bets}次投注")
-        st.write(f"涉及比赛: 1. {home_team} vs {away_team} (大球+总进球) | 2. {s2_home_team} vs {s2_away_team} (稳胆)")
-    
-    # 存储结果
-    all_final_balances = []
-    all_profitable_trials = []
-    all_max_drawdowns = []
-    
-    # 进度条
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for trial in range(sim_trials):
-        # 更新进度
-        if trial % 100 == 0:
-            progress_bar.progress(min((trial + 1) / sim_trials, 1.0))
-            status_text.text(f"正在模拟: {trial+1}/{sim_trials} 次试验...")
+    st.warning("蒙特卡洛模拟功能当前不可用")
+    with st.expander("查看功能说明"):
+        st.markdown("""
+        **原功能包含：**
+        - ✅ 多次随机试验模拟
+        - ✅ 资金变化追踪
+        - ✅ 破产概率计算
+        - ✅ 风险等级评估
+        - ✅ 可视化图表展示
         
-        # 初始资金
-        capital = initial_capital
-        peak_capital = initial_capital
-        max_drawdown = 0
-        
-        # 执行多次投注
-        for bet in range(sim_bets):
-            if mode == "策略 1：比分精准流":
-                # 策略1模拟
-                is_over25 = random.random() < pred_prob
-                
-                if is_over25:
-                    # 大球赢
-                    capital += o25_stake * (o25_odds - 1)
-                else:
-                    # 大球输
-                    capital -= o25_stake
-            else:
-                # 策略2模拟 - 两场比赛
-                # 1. 稳胆比赛结果
-                strong_random = random.random()
-                if strong_random < win_prob:
-                    strong_result = "win"
-                elif strong_random < win_prob + draw_prob:
-                    strong_result = "draw"
-                else:
-                    strong_result = "lose"
-                
-                # 2. 主比赛结果
-                main_random = random.random()
-                if main_random < goal_0_prob:
-                    main_result = "0球"
-                elif main_random < goal_0_prob + goal_1_prob:
-                    main_result = "1球"
-                elif main_random < goal_0_prob + goal_1_prob + goal_2_prob:
-                    main_result = "2球"
-                else:
-                    main_result = "3球+"
-                
-                # 计算收益
-                # 大球投注结果
-                if main_result == "3球+":
-                    capital += o25_stake * (o25_odds - 1)  # 大球赢
-                else:
-                    capital -= o25_stake  # 大球输
-                
-                # 2串1投注结果
-                # 检查稳胆结果是否匹配
-                if ((strong_win_type == "胜" and strong_result == "win") or
-                    (strong_win_type == "平" and strong_result == "draw") or
-                    (strong_win_type == "负" and strong_result == "lose")):
-                    # 稳胆对了，检查主比赛进球数
-                    for parlay_bet in parlay_bets:
-                        if parlay_bet["goal"] == main_result:
-                            # 这个2串1中了
-                            capital += parlay_bet["stake"] * (parlay_bet["parlay_odds"] - 1)
-                        else:
-                            # 这个2串1没中
-                            capital -= parlay_bet["stake"]
-                else:
-                    # 稳胆错了，所有2串1都输
-                    for parlay_bet in parlay_bets:
-                        capital -= parlay_bet["stake"]
-            
-            # 更新峰值和最大回撤
-            if capital > peak_capital:
-                peak_capital = capital
-            drawdown = (peak_capital - capital) / peak_capital * 100
-            if drawdown > max_drawdown:
-                max_drawdown = drawdown
-            
-            # 如果资金为负，则破产
-            if capital <= 0:
-                capital = 0
-                break
-        
-        all_final_balances.append(capital)
-        all_profitable_trials.append(capital > initial_capital)
-        all_max_drawdowns.append(max_drawdown)
-    
-    # 完成进度
-    progress_bar.progress(1.0)
-    status_text.text("✅ 模拟完成！")
-    
-    # 计算统计
-    avg_final = np.mean(all_final_balances)
-    median_final = np.median(all_final_balances)
-    bankruptcy_count = sum(1 for b in all_final_balances if b <= 0)
-    bankruptcy_rate = bankruptcy_count / sim_trials * 100
-    profitable_count = sum(all_profitable_trials)
-    profitable_rate = profitable_count / sim_trials * 100
-    avg_max_drawdown = np.mean(all_max_drawdowns)
-    
-    # 显示结果
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("平均最终资金", f"${avg_final:,.0f}", 
-                  delta=f"{avg_final-initial_capital:+,.0f}")
-    
-    with col2:
-        st.metric("破产概率", f"{bankruptcy_rate:.1f}%")
-    
-    with col3:
-        st.metric("盈利试验比例", f"{profitable_rate:.1f}%")
-    
-    with col4:
-        st.metric("平均最大回撤", f"{avg_max_drawdown:.1f}%")
-    
-    # 资金分布直方图
-    st.write("##### 📊 最终资金分布")
-    
-    # 创建分布数据
-    bins = 15
-    hist_data = np.histogram(all_final_balances, bins=bins)
-    
-    # 创建DataFrame
-    bin_edges = hist_data[1]
-    bin_counts = hist_data[0]
-    
-    bin_labels = []
-    for i in range(len(bin_edges)-1):
-        if bin_edges[i+1] <= 0:
-            bin_labels.append(f"破产")
-        else:
-            bin_labels.append(f"${int(bin_edges[i]):,}-${int(bin_edges[i+1]):,}")
-    
-    dist_df = pd.DataFrame({
-        "资金范围": bin_labels,
-        "试验数量": bin_counts,
-        "比例": bin_counts / sim_trials * 100
-    })
-    
-    # 显示图表
-    st.bar_chart(dist_df.set_index("资金范围")["试验数量"])
-    
-    # 显示详细分布表
-    with st.expander("📋 查看详细分布数据"):
-        st.dataframe(dist_df, use_container_width=True)
-    
-    # 风险分析
-    st.write("##### ⚠️ 风险分析")
-    
-    risk_level = "低"
-    risk_color = "green"
-    if bankruptcy_rate > 30:
-        risk_level = "极高"
-        risk_color = "red"
-        st.error(f"❌ **{risk_level}破产风险** ({bankruptcy_rate:.1f}%) - 强烈不建议执行")
-    elif bankruptcy_rate > 20:
-        risk_level = "高"
-        risk_color = "orange"
-        st.warning(f"⚠️ **{risk_level}破产风险** ({bankruptcy_rate:.1f}%) - 需要谨慎操作")
-    elif bankruptcy_rate > 10:
-        risk_level = "中等"
-        risk_color = "blue"
-        st.info(f"ℹ️ **{risk_level}破产风险** ({bankruptcy_rate:.1f}%) - 建议优化策略")
-    else:
-        st.success(f"✅ **{risk_level}破产风险** ({bankruptcy_rate:.1f}%) - 风险可控")
-    
-    # 实验结论
-    st.write("##### 💡 实验结论")
-    
-    if ev > 0 and profitable_rate > 60 and bankruptcy_rate < 10:
-        st.success(f"""
-        **🎯 策略表现优秀**:
-        1. 正向期望值 (EV = ${ev:.2f})
-        2. {profitable_rate:.1f}% 的试验盈利
-        3. 仅 {bankruptcy_rate:.1f}% 的破产风险
-        
-        💰 **结论**: 理论上，长期执行此策略可能盈利。
-        """)
-    elif ev <= 0:
-        st.error(f"""
-        **🚫 策略存在根本问题**:
-        1. 负向期望值 (EV = ${ev:.2f})
-        2. 长期执行必然亏损
-        3. 建议重新设计策略或调整参数
-        """)
-    else:
-        st.warning(f"""
-        **⚠️ 策略表现不稳定**:
-        1. 虽然有正向期望值 (EV = ${ev:.2f})
-        2. 但盈利比例 ({profitable_rate:.1f}%) 或破产风险 ({bankruptcy_rate:.1f}%) 不理想
-        3. 需要进一步优化或降低仓位
+        **如需启用，请联系管理员或从历史版本恢复。**
         """)
 
 # --- 7. 策略报告生成 ---
@@ -1334,23 +1133,9 @@ with col_report1:
         """)
 
 with col_report2:
-    if show_monte_carlo and 'sim_trials' in locals():
-        st.markdown(f"""
-        ### 📊 蒙特卡洛模拟结果
-        
-        **模拟设置**
-        - 🔄 试验次数: {sim_trials:,}
-        - 🎰 每次试验投注次数: {sim_bets}
-        - 💵 初始资金: ${initial_capital:,.0f}
-        
-        **模拟结果**
-        - ✅ 平均最终资金: ${avg_final:,.0f}
-        - 📉 破产概率: {bankruptcy_rate:.1f}%
-        - 📈 盈利试验比例: {profitable_rate:.1f}%
-        - 🔻 平均最大回撤: {avg_max_drawdown:.1f}%
-        
-        **风险等级**: <span style='color:{risk_color}; font-weight:bold;'>{risk_level}风险</span>
-        """, unsafe_allow_html=True)
+    # 蒙特卡洛模块已移除 — 在此显示说明而非运行模拟
+    if show_monte_carlo:
+        st.markdown("### 📊 蒙特卡洛模拟结果\n\n已从本工具中移除。如需恢复，请从版本控制还原对应代码块。")
 
 # --- 8. 教育总结 ---
 st.divider()
