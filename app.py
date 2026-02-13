@@ -419,7 +419,106 @@ with st.sidebar:
         st.markdown("---")
         st.markdown("### 预测概率")
         
-        pred_prob = st.slider("大球概率 (%)", 10, 90, 48) / 100
+        # 添加先验概率选项
+        use_prior = st.checkbox("📊 使用先验概率（贝叶斯方法）", value=False)
+        
+        if use_prior:
+            st.markdown("#### 🎯 先验概率设置")
+            
+            st.info("""
+            **什么是先验概率？**
+            
+            基于你的经验、分析、专家意见等主观判断的初始概率。
+            系统会结合历史数据和先验概率，使用贝叶斯方法计算后验概率。
+            """)
+            
+            # 先验概率来源选择
+            prior_source = st.radio(
+                "先验概率来源",
+                ["手动输入", "基于赔率反推", "专家预测"],
+                horizontal=True
+            )
+            
+            if prior_source == "手动输入":
+                st.markdown("##### 输入各项先验概率")
+                
+                col_p1, col_p2 = st.columns(2)
+                with col_p1:
+                    prior_home_win = st.slider("主队获胜概率 (%)", 0, 100, 45, key="prior_home")
+                with col_p2:
+                    prior_away_win = st.slider("客队获胜概率 (%)", 0, 100, 30, key="prior_away")
+                
+                prior_draw = 100 - prior_home_win - prior_away_win
+                st.metric("平局概率（自动计算）", f"{prior_draw}%")
+                
+                if prior_draw < 0:
+                    st.error("❌ 概率总和不能超过100%，请调整")
+                
+                st.markdown("---")
+                prior_over25 = st.slider("大球(3+)先验概率 (%)", 0, 100, 50, key="prior_over")
+                
+            elif prior_source == "基于赔率反推":
+                st.markdown("##### 输入赔率（自动计算先验概率）")
+                
+                col_o1, col_o2, col_o3 = st.columns(3)
+                with col_o1:
+                    odds_home = st.number_input("主胜赔率", value=2.10, min_value=1.01, step=0.01)
+                with col_o2:
+                    odds_draw = st.number_input("平局赔率", value=3.50, min_value=1.01, step=0.01)
+                with col_o3:
+                    odds_away = st.number_input("客胜赔率", value=3.20, min_value=1.01, step=0.01)
+                
+                # 赔率转概率（去除庄家利润）
+                prob_home_raw = 1 / odds_home
+                prob_draw_raw = 1 / odds_draw
+                prob_away_raw = 1 / odds_away
+                total_raw = prob_home_raw + prob_draw_raw + prob_away_raw
+                
+                prior_home_win = int(prob_home_raw / total_raw * 100)
+                prior_draw = int(prob_draw_raw / total_raw * 100)
+                prior_away_win = int(prob_away_raw / total_raw * 100)
+                
+                st.success(f"✅ 计算得出: 主胜{prior_home_win}% | 平{prior_draw}% | 客胜{prior_away_win}%")
+                
+                prior_over25 = st.slider("大球(3+)先验概率 (%)", 0, 100, 50, key="prior_over_odds")
+                
+            else:  # 专家预测
+                st.markdown("##### 专家预测概率")
+                
+                expert_name = st.text_input("专家/机构名称", placeholder="例如：ESPN预测")
+                
+                col_e1, col_e2, col_e3 = st.columns(3)
+                with col_e1:
+                    prior_home_win = st.number_input("主胜概率 (%)", 0, 100, 45)
+                with col_e2:
+                    prior_draw = st.number_input("平局概率 (%)", 0, 100, 25)
+                with col_e3:
+                    prior_away_win = st.number_input("客胜概率 (%)", 0, 100, 30)
+                
+                total_prob = prior_home_win + prior_draw + prior_away_win
+                if abs(total_prob - 100) > 1:
+                    st.error(f"❌ 概率总和应为100%，当前为{total_prob}%")
+                
+                prior_over25 = st.number_input("大球概率 (%)", 0, 100, 50)
+            
+            # 保存先验概率到session_state
+            st.session_state.use_prior = True
+            st.session_state.prior_home_win = prior_home_win / 100
+            st.session_state.prior_draw = prior_draw / 100 if prior_source != "专家预测" else prior_draw / 100
+            st.session_state.prior_away_win = prior_away_win / 100
+            st.session_state.prior_over25 = prior_over25 / 100
+            st.session_state.prior_source = prior_source
+            
+        else:
+            st.session_state.use_prior = False
+        
+        # 根据是否使用先验概率显示不同的概率输入
+        if not use_prior:
+            pred_prob = st.slider("大球概率 (%)", 10, 90, 48) / 100
+        else:
+            st.markdown("#### 📊 后验概率（将在分析中计算）")
+            st.info("系统会结合先验概率和历史数据，使用贝叶斯方法计算最终的后验概率")
+            pred_prob = prior_over25 / 100  # 使用先验作为初始值
         
         st.markdown("---")
         st.markdown("### 策略选择")
@@ -563,6 +662,64 @@ with st.sidebar:
                         # 自动填充建议概率
                         if st.button("📊 使用历史数据建议概率", use_container_width=True):
                             st.info(f"💡 建议在基础设置中将大球概率设为 {suggested_prob}%")
+                        
+                        # 贝叶斯后验概率计算
+                        if st.session_state.get('use_prior', False):
+                            st.markdown("---")
+                            st.markdown("#### 🧮 贝叶斯后验概率")
+                            
+                            prior_over = st.session_state.get('prior_over25', 0.5)
+                            likelihood = stats['over_25_rate'] / 100
+                            
+                            # 简单的贝叶斯更新
+                            # P(大球|历史数据) ∝ P(历史数据|大球) × P(大球)
+                            # 使用加权平均（可以根据数据量调整权重）
+                            data_weight = min(stats['total_matches'] / 10, 0.7)  # 最多70%权重给历史数据
+                            prior_weight = 1 - data_weight
+                            
+                            posterior_over = likelihood * data_weight + prior_over * prior_weight
+                            
+                            st.markdown(f"""
+                            <div class="info-box">
+                            <h5>📊 贝叶斯更新结果</h5>
+                            <p><strong>先验概率</strong>: {prior_over*100:.1f}% 
+                            （来源: {st.session_state.get('prior_source', '未知')}）</p>
+                            <p><strong>历史似然</strong>: {likelihood*100:.1f}% 
+                            （基于{stats['total_matches']}场数据）</p>
+                            <p><strong>数据权重</strong>: {data_weight*100:.0f}% | 
+                            <strong>先验权重</strong>: {prior_weight*100:.0f}%</p>
+                            <h4 style="color: #1e3c72;">🎯 后验概率: {posterior_over*100:.1f}%</h4>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # 更新建议概率为后验概率
+                            suggested_prob = int(min(max(posterior_over * 100, 10), 90))
+                            
+                            st.success(f"✅ 建议使用后验概率: **{suggested_prob}%**")
+                            
+                            # 解释
+                            with st.expander("📚 什么是贝叶斯后验概率？"):
+                                st.markdown("""
+                                **贝叶斯方法**结合了两种信息：
+                                
+                                1. **先验概率** - 你基于经验、赔率、专家意见的主观判断
+                                2. **历史数据** - 客观的历史交锋记录
+                                
+                                **计算过程**：
+                                ```
+                                后验概率 = 先验概率 × 先验权重 + 历史似然 × 数据权重
+                                
+                                权重分配：
+                                - 数据量越大，历史数据权重越高
+                                - 数据量少时，更依赖先验判断
+                                ```
+                                
+                                **优势**：
+                                - ✅ 避免完全依赖小样本数据
+                                - ✅ 融合主观判断和客观数据
+                                - ✅ 数据越多，结果越客观
+                                - ✅ 数据少时，保留专业判断
+                                """)
                 
                 else:
                     st.error("❌ 统计计算失败")
@@ -707,10 +864,20 @@ with kpi_col1:
     ), unsafe_allow_html=True)
 
 with kpi_col2:
+    # 如果使用了贝叶斯方法，显示后验概率
+    if st.session_state.get('use_prior', False) and 'posterior_over' in st.session_state:
+        posterior_prob = st.session_state.posterior_over
+        prob_label = "后验概率"
+        prob_delta = f"先验: {st.session_state.get('prior_over25', 0.5)*100:.0f}%"
+    else:
+        posterior_prob = pred_prob
+        prob_label = "预测概率"
+        prob_delta = f"赔率: {o25_odds}"
+    
     st.markdown(create_kpi_card(
-        "大球概率",
-        f"{pred_prob*100:.0f}%",
-        f"赔率: {o25_odds}",
+        f"大球{prob_label}",
+        f"{posterior_prob*100:.0f}%",
+        prob_delta,
         "neutral"
     ), unsafe_allow_html=True)
 
@@ -1228,6 +1395,178 @@ with main_tabs[2]:
                     
                     if stats['total_matches'] < 5:
                         st.warning("⚠️ 样本量较少，建议结合其他因素综合判断")
+                
+                # 贝叶斯分析区域
+                if st.session_state.get('use_prior', False):
+                    st.markdown("---")
+                    st.markdown("### 🧮 贝叶斯概率更新")
+                    
+                    prior_over = st.session_state.get('prior_over25', 0.5)
+                    prior_home = st.session_state.get('prior_home_win', 0.33)
+                    prior_draw = st.session_state.get('prior_draw', 0.33)
+                    prior_away = st.session_state.get('prior_away_win', 0.33)
+                    
+                    likelihood_over = stats['over_25_rate'] / 100
+                    likelihood_home = stats['home_win_rate'] / 100
+                    likelihood_draw = stats['draw_rate'] / 100
+                    likelihood_away = stats['away_win_rate'] / 100
+                    
+                    # 根据数据量调整权重
+                    data_weight = min(stats['total_matches'] / 10, 0.7)
+                    prior_weight = 1 - data_weight
+                    
+                    # 计算后验概率
+                    posterior_over = likelihood_over * data_weight + prior_over * prior_weight
+                    posterior_home = likelihood_home * data_weight + prior_home * prior_weight
+                    posterior_draw = likelihood_draw * data_weight + prior_draw * prior_weight
+                    posterior_away = likelihood_away * data_weight + prior_away * prior_weight
+                    
+                    # 归一化胜平负概率
+                    total_result = posterior_home + posterior_draw + posterior_away
+                    posterior_home /= total_result
+                    posterior_draw /= total_result
+                    posterior_away /= total_result
+                    
+                    col_bayes1, col_bayes2 = st.columns(2)
+                    
+                    with col_bayes1:
+                        st.markdown("#### 📊 大小球后验概率")
+                        
+                        # 对比表格
+                        bayes_over_df = pd.DataFrame([
+                            {
+                                "类型": "先验概率",
+                                "大球": f"{prior_over*100:.1f}%",
+                                "小球": f"{(1-prior_over)*100:.1f}%"
+                            },
+                            {
+                                "类型": "历史似然",
+                                "大球": f"{likelihood_over*100:.1f}%",
+                                "小球": f"{(1-likelihood_over)*100:.1f}%"
+                            },
+                            {
+                                "类型": "后验概率",
+                                "大球": f"{posterior_over*100:.1f}%",
+                                "小球": f"{(1-posterior_over)*100:.1f}%"
+                            }
+                        ])
+                        
+                        st.dataframe(bayes_over_df, use_container_width=True, hide_index=True)
+                        
+                        # 可视化先验 vs 后验
+                        fig_bayes = go.Figure()
+                        
+                        fig_bayes.add_trace(go.Bar(
+                            name='先验概率',
+                            x=['大球', '小球'],
+                            y=[prior_over*100, (1-prior_over)*100],
+                            marker_color='lightblue'
+                        ))
+                        
+                        fig_bayes.add_trace(go.Bar(
+                            name='后验概率',
+                            x=['大球', '小球'],
+                            y=[posterior_over*100, (1-posterior_over)*100],
+                            marker_color='darkblue'
+                        ))
+                        
+                        fig_bayes.update_layout(
+                            title='先验概率 vs 后验概率对比',
+                            yaxis_title='概率 (%)',
+                            barmode='group',
+                            height=300
+                        )
+                        
+                        st.plotly_chart(fig_bayes, use_container_width=True)
+                    
+                    with col_bayes2:
+                        st.markdown("#### 🏆 胜平负后验概率")
+                        
+                        # 对比表格
+                        bayes_result_df = pd.DataFrame([
+                            {
+                                "类型": "先验概率",
+                                f"{home_team}胜": f"{prior_home*100:.1f}%",
+                                "平局": f"{prior_draw*100:.1f}%",
+                                f"{away_team}胜": f"{prior_away*100:.1f}%"
+                            },
+                            {
+                                "类型": "历史似然",
+                                f"{home_team}胜": f"{likelihood_home*100:.1f}%",
+                                "平局": f"{likelihood_draw*100:.1f}%",
+                                f"{away_team}胜": f"{likelihood_away*100:.1f}%"
+                            },
+                            {
+                                "类型": "后验概率",
+                                f"{home_team}胜": f"{posterior_home*100:.1f}%",
+                                "平局": f"{posterior_draw*100:.1f}%",
+                                f"{away_team}胜": f"{posterior_away*100:.1f}%"
+                            }
+                        ])
+                        
+                        st.dataframe(bayes_result_df, use_container_width=True, hide_index=True)
+                        
+                        # 可视化
+                        fig_result = go.Figure()
+                        
+                        fig_result.add_trace(go.Bar(
+                            name='先验概率',
+                            x=[f'{home_team}胜', '平局', f'{away_team}胜'],
+                            y=[prior_home*100, prior_draw*100, prior_away*100],
+                            marker_color='lightgreen'
+                        ))
+                        
+                        fig_result.add_trace(go.Bar(
+                            name='后验概率',
+                            x=[f'{home_team}胜', '平局', f'{away_team}胜'],
+                            y=[posterior_home*100, posterior_draw*100, posterior_away*100],
+                            marker_color='darkgreen'
+                        ))
+                        
+                        fig_result.update_layout(
+                            title='胜平负概率更新',
+                            yaxis_title='概率 (%)',
+                            barmode='group',
+                            height=300
+                        )
+                        
+                        st.plotly_chart(fig_result, use_container_width=True)
+                    
+                    # 权重说明
+                    st.markdown("---")
+                    st.markdown(f"""
+                    <div class="info-box">
+                    <h5>⚖️ 权重分配说明</h5>
+                    <p><strong>历史数据权重</strong>: {data_weight*100:.0f}%</p>
+                    <p><strong>先验判断权重</strong>: {prior_weight*100:.0f}%</p>
+                    <p><strong>依据</strong>: 基于{stats['total_matches']}场历史数据</p>
+                    
+                    <p style="margin-top: 10px;"><strong>权重逻辑</strong>:</p>
+                    <ul>
+                        <li>数据量 ≥ 10场 → 历史权重70%, 先验权重30%</li>
+                        <li>数据量 5-9场 → 动态权重，数据越多权重越高</li>
+                        <li>数据量 < 5场 → 历史权重较低，更依赖先验</li>
+                    </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # 最终建议
+                    st.success(f"""
+                    ### 🎯 最终建议概率（后验概率）
+                    
+                    - **大球(3+)**: {posterior_over*100:.1f}%
+                    - **{home_team}获胜**: {posterior_home*100:.1f}%
+                    - **平局**: {posterior_draw*100:.1f}%
+                    - **{away_team}获胜**: {posterior_away*100:.1f}%
+                    
+                    💡 建议在策略配置中使用这些后验概率进行决策
+                    """)
+                    
+                    # 保存后验概率到session_state供其他地方使用
+                    st.session_state.posterior_over = posterior_over
+                    st.session_state.posterior_home = posterior_home
+                    st.session_state.posterior_draw = posterior_draw
+                    st.session_state.posterior_away = posterior_away
             
             else:
                 st.error("❌ 统计计算失败")
