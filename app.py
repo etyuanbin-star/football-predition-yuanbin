@@ -376,11 +376,16 @@ def create_kpi_card(label, value, delta=None, card_type="neutral"):
 # ==================== 主应用 ====================
 
 # --- 顶部导航栏 ---
-st.markdown("""
+history_count = len(st.session_state.match_history)
+st.markdown(f"""
 <div class="top-nav">
     <div>
         <div class="nav-title">🔺 胜算实验室 Pro</div>
         <div class="nav-subtitle">专业投注决策分析系统</div>
+    </div>
+    <div style="text-align: right;">
+        <div style="font-size: 24px; font-weight: bold;">📚 {history_count}</div>
+        <div style="font-size: 12px; opacity: 0.8;">已保存分析</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -423,29 +428,151 @@ with st.sidebar:
     
     # ===== 标签页2: 历史分析 =====
     with sidebar_tabs[1]:
-        st.markdown("### 历史交锋数据")
+        st.markdown("### 📊 历史交锋分析")
         
         if home_team and away_team:
             st.info(f"**{home_team}** vs **{away_team}**")
+        else:
+            st.warning("⚠️ 请先在基础设置中输入球队")
         
         history_data = st.text_area(
-            "粘贴历史战绩",
-            height=200,
-            placeholder="格式：日期 主队 比分 客队\n每行一场比赛"
+            "粘贴历史战绩数据",
+            height=180,
+            placeholder="格式示例：\n02/05/2025 曼城 2-1 阿森纳\n每行一场比赛",
+            key="history_input"
         )
         
         if history_data and home_team and away_team:
             matches = parse_history_data(history_data, home_team, away_team)
+            
             if matches:
                 stats = calculate_statistics(matches, home_team, away_team)
+                
                 if stats:
-                    st.success(f"✅ 已解析 {stats['total_matches']} 场比赛")
+                    st.success(f"✅ 已解析 **{stats['total_matches']}** 场历史比赛")
                     
-                    col1, col2 = st.columns(2)
+                    # 快速统计预览
+                    col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("场均进球", f"{stats['avg_goals']:.2f}")
                     with col2:
                         st.metric("大球比例", f"{stats['over_25_rate']:.0f}%")
+                    with col3:
+                        st.metric(f"{home_team}胜率", f"{stats['home_win_rate']:.0f}%")
+                    
+                    # 详细统计展开
+                    with st.expander("📈 查看详细统计", expanded=True):
+                        st.markdown("#### 胜负平分布")
+                        
+                        result_col1, result_col2, result_col3 = st.columns(3)
+                        with result_col1:
+                            st.metric(f"🏠 {home_team}胜", f"{stats['home_wins']}场", 
+                                     f"{stats['home_win_rate']:.1f}%")
+                        with result_col2:
+                            st.metric("🤝 平局", f"{stats['draws']}场", 
+                                     f"{stats['draw_rate']:.1f}%")
+                        with result_col3:
+                            st.metric(f"✈️ {away_team}胜", f"{stats['away_wins']}场", 
+                                     f"{stats['away_win_rate']:.1f}%")
+                        
+                        st.markdown("---")
+                        st.markdown("#### 🎯 比分规律分析")
+                        
+                        # 比分分布表格
+                        if stats['score_distribution']:
+                            score_df = pd.DataFrame([
+                                {"比分": score, "出现次数": count, 
+                                 "概率": f"{count/stats['total_matches']*100:.1f}%"}
+                                for score, count in sorted(
+                                    stats['score_distribution'].items(), 
+                                    key=lambda x: x[1], 
+                                    reverse=True
+                                )
+                            ])
+                            st.dataframe(score_df, use_container_width=True, hide_index=True)
+                            
+                            st.success(f"🔥 最常见比分: **{stats['most_common_score']}** "
+                                     f"({stats['most_common_score_count']}次, "
+                                     f"{stats['most_common_score_rate']:.1f}%)")
+                        
+                        st.markdown("---")
+                        st.markdown("#### 📊 进球数分布")
+                        
+                        # 总进球数分布
+                        if stats['goal_distribution']:
+                            goal_dist_data = []
+                            for goals, count in sorted(stats['goal_distribution'].items()):
+                                goal_type = "🔴 小球" if goals <= 2 else "🟢 大球"
+                                prob = count / stats['total_matches'] * 100
+                                goal_dist_data.append({
+                                    "进球数": f"{goals}球",
+                                    "类型": goal_type,
+                                    "次数": count,
+                                    "概率": f"{prob:.1f}%"
+                                })
+                            
+                            goal_df = pd.DataFrame(goal_dist_data)
+                            st.dataframe(goal_df, use_container_width=True, hide_index=True)
+                        
+                        st.markdown("---")
+                        st.markdown("#### 💡 大小球分析")
+                        
+                        over_col1, over_col2 = st.columns(2)
+                        with over_col1:
+                            st.metric("🟢 大球(3+)", f"{stats['over_25']}场", 
+                                     f"{stats['over_25_rate']:.1f}%")
+                        with over_col2:
+                            st.metric("🔴 小球(0-2)", f"{stats['under_25']}场", 
+                                     f"{stats['under_25_rate']:.1f}%")
+                        
+                        # 根据历史大球比例给建议
+                        if stats['over_25_rate'] >= 60:
+                            st.success("✅ 历史大球比例较高，本场大球概率可能偏高")
+                        elif stats['over_25_rate'] <= 40:
+                            st.warning("⚠️ 历史大球比例较低，本场可能偏向小球")
+                        else:
+                            st.info("ℹ️ 历史大小球分布均衡")
+                        
+                        st.markdown("---")
+                        st.markdown("#### 🎲 预测参考建议")
+                        
+                        # 基于历史数据给出预测建议
+                        suggested_prob = int(min(max(stats['over_25_rate'], 10), 90))
+                        
+                        st.markdown(f"""
+                        **基于历史数据的建议概率**: {suggested_prob}%
+                        
+                        **分析依据**:
+                        - 历史交锋大球比例: {stats['over_25_rate']:.1f}%
+                        - 场均总进球: {stats['avg_goals']:.2f}
+                        - {home_team}场均进球: {stats['avg_home_goals']:.2f}
+                        - {away_team}场均进球: {stats['avg_away_goals']:.2f}
+                        
+                        **最不可能出现的比分**:
+                        """)
+                        
+                        # 找出从未出现过的常见比分
+                        common_scores = ["0-0", "1-0", "0-1", "1-1", "2-0", "0-2", "2-1", "1-2", "2-2", "3-0", "0-3"]
+                        never_appeared = [s for s in common_scores if s not in stats['score_distribution']]
+                        
+                        if never_appeared:
+                            st.warning(f"❌ 历史从未出现: **{', '.join(never_appeared[:5])}**")
+                        else:
+                            st.info("所有常见比分都曾出现过")
+                        
+                        # 自动填充建议概率
+                        if st.button("📊 使用历史数据建议概率", use_container_width=True):
+                            st.info(f"💡 建议在基础设置中将大球概率设为 {suggested_prob}%")
+                
+                else:
+                    st.error("❌ 统计计算失败")
+            else:
+                st.warning("⚠️ 未能解析出有效比赛数据，请检查格式")
+        
+        elif history_data:
+            st.warning("⚠️ 请先在基础设置中输入主客队名称")
+        else:
+            st.info("💡 粘贴历史战绩数据后即可自动分析")
     
     # ===== 标签页3: AI预测 =====
     with sidebar_tabs[2]:
@@ -476,22 +603,73 @@ with st.sidebar:
     
     # ===== 标签页4: 历史记录 =====
     with sidebar_tabs[3]:
-        st.markdown("### 分析历史记录")
+        st.markdown("### 📚 分析历史记录")
         
         if st.session_state.match_history:
-            st.info(f"共 {len(st.session_state.match_history)} 条记录")
+            st.success(f"✅ 共 **{len(st.session_state.match_history)}** 条记录")
             
-            for idx, record in enumerate(st.session_state.match_history[:5]):
-                with st.expander(f"{record.get('home_team', '?')} vs {record.get('away_team', '?')}"):
-                    st.write(f"**时间**: {record.get('timestamp', '')}")
-                    st.write(f"**EV**: ${record.get('ev', 0):.2f}")
-                    st.write(f"**策略**: {record.get('mode', '')}")
+            # 添加搜索功能
+            search_term = st.text_input("🔍 搜索球队", placeholder="输入球队名称...")
             
-            if st.button("🗑️ 清空历史", type="secondary"):
-                st.session_state.match_history = []
-                st.rerun()
+            # 筛选记录
+            filtered_records = st.session_state.match_history
+            if search_term:
+                filtered_records = [
+                    r for r in st.session_state.match_history 
+                    if search_term.lower() in r.get('home_team', '').lower() 
+                    or search_term.lower() in r.get('away_team', '').lower()
+                ]
+                st.info(f"找到 {len(filtered_records)} 条匹配记录")
+            
+            # 显示记录
+            for idx, record in enumerate(filtered_records[:10]):
+                with st.expander(
+                    f"🏆 {record.get('home_team', '?')} vs {record.get('away_team', '?')}", 
+                    expanded=False
+                ):
+                    st.markdown(f"""
+                    **📅 时间**: {record.get('timestamp', '')}  
+                    **🏆 联赛**: {record.get('league', '')}  
+                    **💰 投入**: ${record.get('total_cost', 0):.2f}  
+                    **📊 EV**: ${record.get('ev', 0):.2f}  
+                    **🎯 策略**: {record.get('mode', '')}  
+                    **📈 ROI**: {record.get('ev', 0) / record.get('total_cost', 1) * 100:.1f}%
+                    """)
+                    
+                    if st.button("🔄 加载此记录", key=f"load_{idx}"):
+                        st.info("💡 加载功能即将推出")
+            
+            st.markdown("---")
+            
+            # 导出和管理
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("📥 导出JSON", use_container_width=True):
+                    json_str = json.dumps(st.session_state.match_history, indent=2, ensure_ascii=False)
+                    st.download_button(
+                        label="⬇️ 下载",
+                        data=json_str,
+                        file_name=f"betting_history_{datetime.now().strftime('%Y%m%d')}.json",
+                        mime="application/json"
+                    )
+            
+            with col_btn2:
+                if st.button("🗑️ 清空历史", type="secondary", use_container_width=True):
+                    if st.session_state.get('confirm_delete', False):
+                        st.session_state.match_history = []
+                        st.session_state.confirm_delete = False
+                        st.rerun()
+                    else:
+                        st.session_state.confirm_delete = True
+                        st.warning("⚠️ 再点一次确认删除")
         else:
-            st.info("暂无历史记录")
+            st.info("📝 暂无历史记录")
+            st.markdown("""
+            **如何保存记录？**
+            1. 完成策略配置
+            2. 进入"完整报告"标签页
+            3. 点击底部"💾 保存本次分析"按钮
+            """)
 
 # ==================== 主内容区 ====================
 
@@ -570,7 +748,7 @@ else:
     st.warning("⚠️ 请在侧边栏输入比赛信息")
 
 # --- 主内容标签页 ---
-main_tabs = st.tabs(["📥 策略配置", "📊 盈亏分析", "📈 数据可视化", "📄 完整报告"])
+main_tabs = st.tabs(["📥 策略配置", "📊 盈亏分析", "📈 历史战绩分析", "📉 数据可视化", "📄 完整报告", "📚 历史记录"])
 
 # ===== 主标签页1: 策略配置 =====
 with main_tabs[0]:
@@ -768,8 +946,319 @@ with main_tabs[1]:
     with col_ev3:
         st.metric("对冲效果", f"{hedge_effect:.1f}%")
 
-# ===== 主标签页3: 数据可视化 =====
+# ===== 主标签页3: 历史战绩分析 =====
 with main_tabs[2]:
+    st.markdown('<div class="section-header">📈 历史战绩深度分析</div>', unsafe_allow_html=True)
+    
+    # 检查是否有历史数据
+    if 'history_input' in st.session_state and st.session_state.history_input and home_team and away_team:
+        history_data = st.session_state.history_input
+        matches = parse_history_data(history_data, home_team, away_team)
+        
+        if matches and len(matches) > 0:
+            stats = calculate_statistics(matches, home_team, away_team)
+            
+            if stats:
+                # 顶部概览卡片
+                st.markdown("### 📊 数据概览")
+                col_overview1, col_overview2, col_overview3, col_overview4 = st.columns(4)
+                
+                with col_overview1:
+                    st.markdown(create_kpi_card(
+                        "历史交锋",
+                        f"{stats['total_matches']}场",
+                        f"数据样本",
+                        "neutral"
+                    ), unsafe_allow_html=True)
+                
+                with col_overview2:
+                    st.markdown(create_kpi_card(
+                        "场均进球",
+                        f"{stats['avg_goals']:.2f}",
+                        f"总{stats['total_goals']}球",
+                        "neutral"
+                    ), unsafe_allow_html=True)
+                
+                with col_overview3:
+                    over_type = "positive" if stats['over_25_rate'] > 50 else "negative"
+                    st.markdown(create_kpi_card(
+                        "大球比例",
+                        f"{stats['over_25_rate']:.0f}%",
+                        f"{stats['over_25']}/{stats['total_matches']}场",
+                        over_type
+                    ), unsafe_allow_html=True)
+                
+                with col_overview4:
+                    st.markdown(create_kpi_card(
+                        "最热比分",
+                        stats['most_common_score'],
+                        f"{stats['most_common_score_rate']:.0f}%",
+                        "neutral"
+                    ), unsafe_allow_html=True)
+                
+                st.markdown("---")
+                
+                # 两列布局：图表和表格
+                col_viz1, col_viz2 = st.columns(2)
+                
+                with col_viz1:
+                    st.markdown("### 🎯 比分热力图")
+                    
+                    # 创建比分热力图数据
+                    score_heat_data = []
+                    for score, count in stats['score_distribution'].items():
+                        home_g, away_g = map(int, score.split('-'))
+                        score_heat_data.append({
+                            '主队进球': home_g,
+                            '客队进球': away_g,
+                            '出现次数': count,
+                            '比分': score
+                        })
+                    
+                    if score_heat_data:
+                        df_heat = pd.DataFrame(score_heat_data)
+                        
+                        # 使用散点图模拟热力图
+                        fig_heat = px.scatter(
+                            df_heat, 
+                            x='主队进球', 
+                            y='客队进球',
+                            size='出现次数',
+                            color='出现次数',
+                            text='比分',
+                            title=f"{home_team} vs {away_team} 历史比分分布",
+                            color_continuous_scale='Reds',
+                            size_max=60
+                        )
+                        
+                        fig_heat.update_traces(textposition='middle center')
+                        fig_heat.update_layout(height=400)
+                        st.plotly_chart(fig_heat, use_container_width=True)
+                
+                with col_viz2:
+                    st.markdown("### 📊 总进球数分布")
+                    
+                    # 总进球数柱状图
+                    goal_dist_data = []
+                    for goals, count in sorted(stats['goal_distribution'].items()):
+                        goal_type = "小球(0-2)" if goals <= 2 else "大球(3+)"
+                        goal_dist_data.append({
+                            '进球数': f"{goals}球",
+                            '次数': count,
+                            '类型': goal_type
+                        })
+                    
+                    df_goals = pd.DataFrame(goal_dist_data)
+                    
+                    fig_goals = px.bar(
+                        df_goals,
+                        x='进球数',
+                        y='次数',
+                        color='类型',
+                        title='进球数分布统计',
+                        color_discrete_map={'小球(0-2)': '#ff6b6b', '大球(3+)': '#51cf66'}
+                    )
+                    fig_goals.update_layout(height=400)
+                    st.plotly_chart(fig_goals, use_container_width=True)
+                
+                st.markdown("---")
+                
+                # 详细表格分析
+                col_table1, col_table2 = st.columns(2)
+                
+                with col_table1:
+                    st.markdown("### 📋 比分出现频率排行")
+                    
+                    score_ranking = pd.DataFrame([
+                        {
+                            "排名": idx + 1,
+                            "比分": score,
+                            "次数": count,
+                            "概率": f"{count/stats['total_matches']*100:.1f}%",
+                            "类型": "大球" if sum(map(int, score.split('-'))) > 2 else "小球"
+                        }
+                        for idx, (score, count) in enumerate(
+                            sorted(stats['score_distribution'].items(), 
+                                   key=lambda x: x[1], 
+                                   reverse=True)
+                        )
+                    ])
+                    
+                    st.dataframe(score_ranking, use_container_width=True, hide_index=True)
+                
+                with col_table2:
+                    st.markdown("### 🎲 概率预测分析")
+                    
+                    # 胜负平概率
+                    prob_analysis = pd.DataFrame([
+                        {
+                            "结果": f"{home_team}获胜",
+                            "次数": stats['home_wins'],
+                            "历史概率": f"{stats['home_win_rate']:.1f}%"
+                        },
+                        {
+                            "结果": "平局",
+                            "次数": stats['draws'],
+                            "历史概率": f"{stats['draw_rate']:.1f}%"
+                        },
+                        {
+                            "结果": f"{away_team}获胜",
+                            "次数": stats['away_wins'],
+                            "历史概率": f"{stats['away_win_rate']:.1f}%"
+                        },
+                        {
+                            "结果": "大球(3+)",
+                            "次数": stats['over_25'],
+                            "历史概率": f"{stats['over_25_rate']:.1f}%"
+                        },
+                        {
+                            "结果": "小球(0-2)",
+                            "次数": stats['under_25'],
+                            "历史概率": f"{stats['under_25_rate']:.1f}%"
+                        }
+                    ])
+                    
+                    st.dataframe(prob_analysis, use_container_width=True, hide_index=True)
+                
+                st.markdown("---")
+                
+                # 智能预测建议
+                st.markdown("### 💡 智能预测建议")
+                
+                col_suggest1, col_suggest2 = st.columns([2, 1])
+                
+                with col_suggest1:
+                    # 基于历史数据的建议
+                    suggested_prob = int(min(max(stats['over_25_rate'], 10), 90))
+                    
+                    st.markdown(f"""
+                    <div class="success-box">
+                    <h4>📊 基于历史数据的大球概率建议</h4>
+                    <p style="font-size: 24px; font-weight: bold; color: #1e3c72;">{suggested_prob}%</p>
+                    
+                    <p><strong>分析依据：</strong></p>
+                    <ul>
+                        <li>历史大球比例: {stats['over_25_rate']:.1f}%</li>
+                        <li>场均总进球: {stats['avg_goals']:.2f}</li>
+                        <li>{home_team}场均进球: {stats['avg_home_goals']:.2f}</li>
+                        <li>{away_team}场均进球: {stats['avg_away_goals']:.2f}</li>
+                    </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # 不可能出现的比分分析
+                    st.markdown("#### ❌ 历史从未出现的常见比分")
+                    
+                    common_scores = ["0-0", "1-0", "0-1", "1-1", "2-0", "0-2", "2-1", "1-2", "2-2", "3-0", "0-3", "3-1", "1-3"]
+                    never_appeared = [s for s in common_scores if s not in stats['score_distribution']]
+                    
+                    if never_appeared:
+                        never_appeared_str = "、".join(never_appeared)
+                        st.warning(f"""
+                        **{never_appeared_str}**
+                        
+                        💡 这些比分在历史交锋中从未出现过，本场出现的概率可能较低。
+                        如果使用比分对冲策略，可以考虑不投注这些比分。
+                        """)
+                    else:
+                        st.success("✅ 所有常见比分在历史中都曾出现过")
+                    
+                    # 高频比分推荐
+                    if len(stats['score_distribution']) > 0:
+                        top_3_scores = sorted(stats['score_distribution'].items(), 
+                                            key=lambda x: x[1], 
+                                            reverse=True)[:3]
+                        
+                        st.markdown("#### 🔥 最可能出现的比分 (Top 3)")
+                        
+                        for idx, (score, count) in enumerate(top_3_scores, 1):
+                            prob = count / stats['total_matches'] * 100
+                            st.info(f"**{idx}. {score}** - 出现{count}次 ({prob:.1f}%)")
+                
+                with col_suggest2:
+                    st.markdown("#### 🎯 策略建议")
+                    
+                    # 根据数据给出策略建议
+                    if stats['over_25_rate'] >= 60:
+                        st.success("""
+                        **✅ 偏向大球**
+                        
+                        历史大球比例高，建议：
+                        - 提高大球投入比例
+                        - 减少小球比分对冲
+                        """)
+                    elif stats['over_25_rate'] <= 40:
+                        st.warning("""
+                        **⚠️ 偏向小球**
+                        
+                        历史小球比例高，建议：
+                        - 降低大球投入
+                        - 加强小球比分对冲
+                        """)
+                    else:
+                        st.info("""
+                        **ℹ️ 均衡策略**
+                        
+                        大小球分布均衡，建议：
+                        - 保持平衡投注
+                        - 关注盘口变化
+                        """)
+                    
+                    # 数据可信度评估
+                    st.markdown("#### 📏 数据可信度")
+                    
+                    if stats['total_matches'] >= 10:
+                        confidence = "高"
+                        color = "green"
+                    elif stats['total_matches'] >= 5:
+                        confidence = "中"
+                        color = "orange"
+                    else:
+                        confidence = "低"
+                        color = "red"
+                    
+                    st.markdown(f"""
+                    <div style="text-align: center; padding: 10px; 
+                                background-color: {color}; color: white; 
+                                border-radius: 8px;">
+                        <div style="font-size: 18px; font-weight: bold;">{confidence}</div>
+                        <div style="font-size: 12px;">样本量: {stats['total_matches']}场</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if stats['total_matches'] < 5:
+                        st.warning("⚠️ 样本量较少，建议结合其他因素综合判断")
+            
+            else:
+                st.error("❌ 统计计算失败")
+        else:
+            st.warning("⚠️ 未能解析出有效的历史比赛数据")
+    
+    else:
+        st.info("""
+        ### 💡 如何使用历史战绩分析？
+        
+        1. **输入球队** - 在侧边栏"基础设置"输入主客队名称
+        2. **粘贴数据** - 在侧边栏"历史分析"标签页粘贴历史战绩
+        3. **自动分析** - 系统会自动解析并生成分析报告
+        4. **查看详情** - 回到此标签页查看详细可视化分析
+        
+        **支持的数据格式**:
+        ```
+        02/05/2025 曼城 2-1 (1-0) 阿森纳
+        24/08/2024 阿森纳 0-0 (0-0) 曼城
+        ```
+        
+        **分析内容包括**:
+        - 📊 比分热力图
+        - 📈 进球数分布
+        - 🎯 高频比分排行
+        - 💡 智能预测建议
+        - ❌ 不可能比分分析
+        """)
+
+# ===== 主标签页4: 数据可视化 =====
+with main_tabs[3]:
     st.markdown('<div class="section-header">数据可视化分析</div>', unsafe_allow_html=True)
     
     # 创建仪表盘
@@ -822,8 +1311,8 @@ with main_tabs[2]:
                           labels={'EV': '期望收益 ($)', '风险等级': '风险等级 (1-5)'})
     st.plotly_chart(fig_risk, use_container_width=True)
 
-# ===== 主标签页4: 完整报告 =====
-with main_tabs[3]:
+# ===== 主标签页5: 完整报告 =====
+with main_tabs[4]:
     st.markdown('<div class="section-header">完整分析报告</div>', unsafe_allow_html=True)
     
     # 报告内容
@@ -887,6 +1376,177 @@ with main_tabs[3]:
             save_to_history(analysis_data)
             st.success("✅ 分析已保存！")
             st.balloons()
+
+# ===== 主标签页6: 历史记录管理 =====
+with main_tabs[5]:
+    st.markdown('<div class="section-header">📚 历史记录管理中心</div>', unsafe_allow_html=True)
+    
+    if st.session_state.match_history:
+        # 统计概览
+        st.markdown("### 📊 记录统计")
+        
+        total_records = len(st.session_state.match_history)
+        total_cost = sum(r.get('total_cost', 0) for r in st.session_state.match_history)
+        total_ev = sum(r.get('ev', 0) for r in st.session_state.match_history)
+        avg_roi = (total_ev / total_cost * 100) if total_cost > 0 else 0
+        
+        col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+        
+        with col_stat1:
+            st.metric("📝 总记录数", f"{total_records}条")
+        with col_stat2:
+            st.metric("💰 累计投入", f"${total_cost:.2f}")
+        with col_stat3:
+            st.metric("📈 累计EV", f"${total_ev:.2f}")
+        with col_stat4:
+            st.metric("📊 平均ROI", f"{avg_roi:.1f}%")
+        
+        st.markdown("---")
+        
+        # 搜索和筛选
+        col_search1, col_search2, col_search3 = st.columns([2, 1, 1])
+        
+        with col_search1:
+            search_term = st.text_input("🔍 搜索比赛", placeholder="输入球队名称...", key="main_search")
+        with col_search2:
+            filter_strategy = st.selectbox("筛选策略", ["全部", "策略 1：比分精准流", "策略 2：总进球复式流"])
+        with col_search3:
+            sort_by = st.selectbox("排序", ["时间(新→旧)", "时间(旧→新)", "EV(高→低)", "EV(低→高)"])
+        
+        # 筛选和排序
+        filtered_records = st.session_state.match_history.copy()
+        
+        if search_term:
+            filtered_records = [
+                r for r in filtered_records 
+                if search_term.lower() in r.get('home_team', '').lower() 
+                or search_term.lower() in r.get('away_team', '').lower()
+            ]
+        
+        if filter_strategy != "全部":
+            filtered_records = [r for r in filtered_records if r.get('mode', '') == filter_strategy]
+        
+        if sort_by == "时间(旧→新)":
+            filtered_records = filtered_records[::-1]
+        elif sort_by == "EV(高→低)":
+            filtered_records = sorted(filtered_records, key=lambda x: x.get('ev', 0), reverse=True)
+        elif sort_by == "EV(低→高)":
+            filtered_records = sorted(filtered_records, key=lambda x: x.get('ev', 0))
+        
+        st.info(f"显示 {len(filtered_records)} / {total_records} 条记录")
+        
+        st.markdown("---")
+        
+        # 显示记录列表
+        st.markdown("### 📋 记录列表")
+        
+        for idx, record in enumerate(filtered_records):
+            ev_color = "green" if record.get('ev', 0) > 0 else ("red" if record.get('ev', 0) < 0 else "gray")
+            roi = (record.get('ev', 0) / record.get('total_cost', 1) * 100) if record.get('total_cost', 0) > 0 else 0
+            
+            with st.expander(
+                f"🏆 {record.get('home_team', '?')} vs {record.get('away_team', '?')} | "
+                f"EV: ${record.get('ev', 0):.2f} | "
+                f"ROI: {roi:.1f}%",
+                expanded=False
+            ):
+                col_detail1, col_detail2 = st.columns(2)
+                
+                with col_detail1:
+                    st.markdown(f"""
+                    **📅 比赛时间**  
+                    {record.get('match_date', '')} {record.get('match_time', '')}
+                    
+                    **🏆 联赛**  
+                    {record.get('league', '')}
+                    
+                    **🎯 策略**  
+                    {record.get('mode', '')}
+                    
+                    **📊 大球概率**  
+                    {record.get('pred_prob', 0)*100:.1f}%
+                    """)
+                
+                with col_detail2:
+                    st.markdown(f"""
+                    **💰 投注信息**  
+                    - 大球赔率: {record.get('o25_odds', 0)}
+                    - 大球投入: ${record.get('o25_stake', 0):.2f}
+                    - 总投入: ${record.get('total_cost', 0):.2f}
+                    
+                    **📈 期望值分析**  
+                    - 策略EV: ${record.get('ev', 0):.2f}
+                    - 单纯EV: ${record.get('simple_ev', 0):.2f}
+                    - 对冲效果: {record.get('hedge_effect', 0):.1f}%
+                    - ROI: {roi:.1f}%
+                    """)
+                
+                col_action1, col_action2, col_action3 = st.columns(3)
+                
+                with col_action1:
+                    if st.button("🔄 复制参数", key=f"copy_{idx}"):
+                        st.info("💡 参数复制功能即将推出")
+                
+                with col_action2:
+                    if st.button("📊 查看详情", key=f"detail_{idx}"):
+                        st.info("💡 详情查看功能即将推出")
+                
+                with col_action3:
+                    if st.button("🗑️ 删除", key=f"delete_{idx}"):
+                        st.session_state.match_history.remove(record)
+                        st.rerun()
+        
+        st.markdown("---")
+        
+        # 批量操作
+        st.markdown("### 🛠️ 批量操作")
+        
+        col_bulk1, col_bulk2, col_bulk3 = st.columns(3)
+        
+        with col_bulk1:
+            if st.button("📥 导出所有记录 (JSON)", use_container_width=True):
+                json_str = json.dumps(st.session_state.match_history, indent=2, ensure_ascii=False)
+                st.download_button(
+                    label="⬇️ 点击下载",
+                    data=json_str,
+                    file_name=f"betting_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
+        
+        with col_bulk2:
+            if st.button("📊 导出为Excel", use_container_width=True):
+                df = pd.DataFrame(st.session_state.match_history)
+                st.info("💡 Excel导出功能即将推出")
+        
+        with col_bulk3:
+            if st.button("🗑️ 清空所有记录", type="secondary", use_container_width=True):
+                if st.session_state.get('confirm_delete_all', False):
+                    st.session_state.match_history = []
+                    st.session_state.confirm_delete_all = False
+                    st.rerun()
+                else:
+                    st.session_state.confirm_delete_all = True
+                    st.warning("⚠️ 再点一次确认删除所有记录")
+    
+    else:
+        st.info("📝 还没有保存任何分析记录")
+        
+        st.markdown("""
+        ### 💡 如何保存分析？
+        
+        1. **配置策略** - 在"策略配置"标签页设置参数
+        2. **查看分析** - 在"盈亏分析"和"数据可视化"查看结果
+        3. **保存记录** - 在"完整报告"标签页点击"💾 保存本次分析"
+        
+        保存后的记录会：
+        - ✅ 自动保存在系统中
+        - ✅ 支持搜索和筛选
+        - ✅ 可以导出为JSON文件
+        - ✅ 可以查看统计分析
+        
+        **提示**: 记录保存在浏览器会话中，关闭浏览器后会清空。建议定期导出备份！
+        """)
 
 # --- 底部信息 ---
 st.markdown("---")
